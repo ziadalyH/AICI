@@ -1,0 +1,186 @@
+services:
+  # OpenSearch - Vector Database
+  opensearch:
+    image: opensearchproject/opensearch:latest
+    container_name: hybrid-rag-opensearch
+    environment:
+      - cluster.name=opensearch-cluster
+      - node.name=opensearch-node1
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - DISABLE_SECURITY_PLUGIN=true
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - plugins.ml_commons.only_run_on_ml_node=false
+      - plugins.ml_commons.native_memory_threshold=99
+      - plugins.ml_commons.rag_pipeline_feature_enabled=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    networks:
+      - hybrid-rag-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # OpenSearch Dashboards
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:latest
+    container_name: hybrid-rag-opensearch-dashboards
+    environment:
+      - OPENSEARCH_HOSTS=["http://opensearch:9200"]
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    ports:
+      - "5601:5601"
+    networks:
+      - hybrid-rag-network
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: hybrid-rag-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+    networks:
+      - hybrid-rag-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # AI Agent Service
+  ai-agent:
+    build:
+      context: ./ai-agent
+      dockerfile: Dockerfile
+    container_name: hybrid-rag-ai-agent
+    ports:
+      - "8001:8001"
+    environment:
+      # OpenSearch Configuration
+      - OPENSEARCH_HOST=opensearch
+      - OPENSEARCH_PORT=9200
+      - OPENSEARCH_USE_SSL=false
+      - OPENSEARCH_VERIFY_CERTS=false
+      - OPENSEARCH_VIDEO_INDEX=rag-video-index
+      - OPENSEARCH_PDF_INDEX=rag-pdf-index
+      
+      # Embedding Configuration
+      - EMBEDDING_MODEL=sentence-transformers/all-mpnet-base-v2
+      - EMBEDDING_DIMENSION=768
+      - SENTENCE_TRANSFORMERS_HOME=/app/models
+      
+      # LLM Configuration
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LLM_PROVIDER=openai
+      - LLM_MODEL=gpt-4o-mini
+      - LLM_TEMPERATURE=0.3
+      - LLM_MAX_TOKENS=500
+      
+      # RAG Configuration
+      - RELEVANCE_THRESHOLD=0.7
+      - MAX_RESULTS=5
+      - LOG_LEVEL=INFO
+      - PYTHONPATH=/app
+    volumes:
+      - ./ai-agent/data:/app/data
+      - models-cache:/app/models
+    networks:
+      - hybrid-rag-network
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8001/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # Backend API Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: hybrid-rag-backend
+    ports:
+      - "8000:8000"
+    environment:
+      # JWT Configuration
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-in-production}
+      - ALGORITHM=${ALGORITHM:-HS256}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      
+      # MongoDB Configuration
+      - MONGODB_URL=mongodb://mongodb:27017/
+      - MONGODB_DB_NAME=${MONGODB_DB_NAME:-hybrid_rag_qa}
+      
+      # AI Agent URL
+      - AI_AGENT_URL=http://ai-agent:8001
+    networks:
+      - hybrid-rag-network
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      ai-agent:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Frontend Service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: hybrid-rag-frontend
+    ports:
+      - "80:80"
+    environment:
+      - REACT_APP_BACKEND_URL=${REACT_APP_BACKEND_URL:-http://localhost:8000}
+    networks:
+      - hybrid-rag-network
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+# Named volumes for persistent data
+volumes:
+  mongodb-data:
+    driver: local
+  opensearch-data:
+    driver: local
+  models-cache:
+    driver: local
+
+# Network for inter-service communication
+networks:
+  hybrid-rag-network:
+    driver: bridge

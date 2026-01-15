@@ -1,0 +1,30 @@
+# FastAPI and Server
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Hybrid RAG Core Dependencies
+opensearch-py==2.4.2          # Vector database client
+openai==0.28.1                # LLM and embeddings API
+numpy<2.0.0                   # Numerical operations
+
+# PDF Processing
+PyMuPDF==1.23.26              # PDF text extraction
+tiktoken==0.5.2               # Token counting
+
+# Embeddings
+sentence-transformers         # Local embedding models
+torch                         # Required by sentence-transformers
+tqdm                          # Progress bars
+
+# NLP
+nltk==3.8.1                   # Stop words for preprocessing
+
+# Configuration
+pyyaml==6.0.1                 # YAML config parsing
+python-dotenv==1.0.1          # Environment variables
+
+# Testing
+pytest==7.4.4
+pytest-asyncio==0.23.3
