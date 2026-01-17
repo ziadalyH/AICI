@@ -1,6 +1,6 @@
 # Hybrid RAG AI Agent
 
-Production-ready RAG system built on Explaino RAG architecture, enhanced with drawing JSON integration for building regulation queries.
+Production-ready RAG system enhanced with drawing JSON integration for building regulation queries.
 
 ## Quick Start
 
