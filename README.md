@@ -13,6 +13,7 @@ A production-ready question-answering system that combines document knowledge wi
 - [Component Documentation](#component-documentation)
 - [API Documentation](#api-documentation)
 - [Usage Examples](#usage-examples)
+- [New Feature: Adjusted JSON Generation](#new-feature-adjusted-json-generation)
 - [Configuration](#configuration)
 - [Troubleshooting](#troubleshooting)
 
@@ -23,19 +24,16 @@ The Hybrid RAG Q&A System is a three-tier application designed for building regu
 ### System Components
 
 1. **Frontend (React + TypeScript)** - Port 80
-
    - User interface for authentication and question submission
    - Drawing JSON editor and session management
    - Real-time answer display with source citations
 
 2. **Backend API (FastAPI)** - Port 8000
-
    - JWT-based authentication and user management
    - MongoDB session storage for drawing data
    - Request routing and service coordination
 
 3. **AI Agent Service (FastAPI + Explaino RAG)** - Port 8001
-
    - OpenSearch vector database for document embeddings
    - Hybrid RAG pipeline combining PDFs with drawing context
    - OpenAI GPT-4o-mini for answer generation
@@ -52,6 +50,7 @@ The Hybrid RAG Q&A System is a three-tier application designed for building regu
 ✅ **Full Citations** - Returns all relevant sources with selection indicators  
 ✅ **Session Management** - Maintains conversation history per user session  
 ✅ **Drawing Analysis** - Analyzes building drawings when no PDF context available  
+✅ **🆕 Adjusted JSON Generation** - LLM provides corrected, compliant JSON for non-compliant drawings  
 ✅ JWT authentication with secure password hashing  
 ✅ Session-based drawing JSON storage  
 ✅ PDF document indexing with semantic search  
@@ -60,6 +59,8 @@ The Hybrid RAG Q&A System is a three-tier application designed for building regu
 ✅ Docker containerization for easy deployment  
 ✅ Customizable embedding models  
 ✅ Health checks and error handling
+
+> **🆕 NEW FEATURE:** The LLM can now generate adjusted, compliant JSON for your drawings! See [ADJUSTED_JSON_FEATURE.md](ADJUSTED_JSON_FEATURE.md) for details.
 
 ## Architecture
 
@@ -407,6 +408,75 @@ curl -X POST "http://localhost:8000/api/query" \
   }
 ]
 ```
+
+## New Feature: Adjusted JSON Generation
+
+### 🎯 What It Does
+
+The LLM can now **generate adjusted, compliant JSON** for your building drawings. Instead of just telling you what's wrong, it provides a complete, corrected version that meets all requirements.
+
+### Quick Example
+
+**Your Question:**
+
+```
+"My extension is 7m deep but the limit is 6m. Can you provide an adjusted compliant JSON?"
+```
+
+**LLM Response:**
+
+````
+**COMPLIANCE ANALYSIS:**
+Your extension exceeds the 6m limit by 1m.
+
+**ADJUSTED COMPLIANT JSON:**
+```json
+[
+  {
+    "layer": "Extension",
+    "type": "polyline",
+    "points": [
+      [4000, 32000],
+      [8000, 32000],
+      [8000, 38000],  ← Changed from 39000 to 38000
+      [4000, 38000],
+      [4000, 32000]
+    ]
+  }
+]
+````
+
+**CHANGES MADE:**
+
+- Reduced extension depth from 7m to 6m
+- Changed Y coordinates from 39000 to 38000
+
+````
+
+### How to Use
+
+1. **Upload your drawing** (even if non-compliant)
+2. **Ask for adjustments** using keywords like:
+   - "Can you provide an adjusted compliant JSON?"
+   - "Fix my drawing and give me the corrected JSON"
+   - "How can I make my extension compliant? Show me the adjusted JSON"
+3. **Copy the JSON** from the response
+4. **Paste into your drawing editor** and save
+
+### Documentation
+
+- 📘 **Quick Start:** [QUICK_START_ADJUSTED_JSON.md](QUICK_START_ADJUSTED_JSON.md)
+- 📗 **User Guide:** [USER_GUIDE_ADJUSTED_JSON.md](USER_GUIDE_ADJUSTED_JSON.md)
+- 📙 **Technical Details:** [ADJUSTED_JSON_IMPLEMENTATION.md](ADJUSTED_JSON_IMPLEMENTATION.md)
+- 📕 **Feature Overview:** [ADJUSTED_JSON_FEATURE.md](ADJUSTED_JSON_FEATURE.md)
+
+### Test It
+
+```bash
+# Run the test script
+cd AICI
+python test_adjustment_request.py
+````
 
 ## Configuration
 

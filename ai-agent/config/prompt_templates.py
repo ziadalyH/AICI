@@ -86,6 +86,50 @@ Instructions:
 Answer:"""
 
     # ============================================================================
+    # COMPLIANCE WITH ADJUSTMENT (Provide Compliant JSON)
+    # ============================================================================
+    
+    COMPLIANCE_WITH_ADJUSTMENT = """You are a building regulations expert. Analyze the user's building drawing against the regulations and provide an adjusted, compliant version if needed.
+
+REGULATIONS CONTEXT:
+{contexts}
+
+USER'S BUILDING DRAWING (Last updated: {formatted_timestamp}):
+{drawing_context}
+
+RAW DRAWING DATA (JSON):
+{drawing_json_preview}
+
+QUESTION: {query}
+
+INSTRUCTIONS:
+1. First, analyze if the current drawing is compliant with the regulations
+2. Identify ALL specific violations or non-compliant aspects
+3. If non-compliant, provide an adjusted JSON that meets ALL requirements
+4. Explain what changes were made and why
+
+RESPONSE FORMAT:
+
+**COMPLIANCE ANALYSIS:**
+[Analyze current drawing against regulations - be specific about what is/isn't compliant]
+
+**VIOLATIONS FOUND:**
+[List each violation with specific measurements and limits]
+
+**ADJUSTED COMPLIANT JSON:**
+```json
+[Provide the complete, corrected JSON array with all necessary adjustments]
+```
+
+**CHANGES MADE:**
+[Explain each change made to achieve compliance, with before/after values]
+
+**VERIFICATION:**
+[Confirm that the adjusted design now meets all requirements]
+
+Answer:"""
+
+    # ============================================================================
     # CONDITIONAL INSTRUCTIONS (Building Specifications)
     # ============================================================================
     
@@ -236,6 +280,28 @@ Source: {result.pdf_filename}, Page {result.page_number}
         return any(keyword in query_lower for keyword in drawing_keywords)
     
     @staticmethod
+    def detect_adjustment_request(query: str) -> bool:
+        """
+        Detect if user is asking for an adjusted/corrected/compliant version of their drawing.
+        
+        Args:
+            query: User's question
+            
+        Returns:
+            True if question requests adjustments/corrections
+        """
+        adjustment_keywords = [
+            'adjust', 'fix', 'correct', 'modify', 'change',
+            'make it compliant', 'make compliant', 'how to make',
+            'what should i change', 'what changes', 'how can i',
+            'provide compliant', 'give me compliant', 'show me compliant',
+            'adjusted json', 'corrected json', 'fixed json',
+            'compliant version', 'compliant design'
+        ]
+        query_lower = query.lower()
+        return any(keyword in query_lower for keyword in adjustment_keywords)
+    
+    @staticmethod
     def format_timestamp(iso_timestamp: str) -> str:
         """
         Convert ISO timestamp to display format.
@@ -381,3 +447,37 @@ class PromptBuilder:
         )
         
         return prompt, self.templates.SYSTEM_DRAWING_ANALYSIS
+    
+    def build_compliance_with_adjustment(
+        self,
+        query: str,
+        pdf_results: list,
+        drawing_context: str,
+        drawing_json: dict,
+        formatted_timestamp: str
+    ) -> tuple[str, str]:
+        """
+        Build prompt for compliance analysis with adjusted JSON generation.
+        
+        Returns:
+            Tuple of (prompt, system_prompt)
+        """
+        # Format contexts from PDF results
+        contexts = self.templates.format_contexts(pdf_results)
+        
+        # Convert drawing JSON to string (full version for adjustment)
+        import json
+        drawing_json_preview = json.dumps(drawing_json, indent=2)
+        
+        # Build prompt
+        prompt = self.templates.COMPLIANCE_WITH_ADJUSTMENT.format(
+            contexts=contexts,
+            formatted_timestamp=formatted_timestamp,
+            drawing_context=drawing_context,
+            drawing_json_preview=drawing_json_preview,
+            query=query
+        )
+        
+        system_prompt = "You are a building regulations expert who analyzes drawings and provides compliant, adjusted versions when needed. Always provide complete, valid JSON when making adjustments."
+        
+        return prompt, system_prompt

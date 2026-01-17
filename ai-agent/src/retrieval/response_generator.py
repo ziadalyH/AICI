@@ -82,6 +82,9 @@ class ResponseGenerator:
         """
         self.logger.info(f"Generating response for query: {query[:50]}...")
         
+        # Check if user is requesting an adjusted/compliant version
+        is_adjustment_request = self.prompt_templates.detect_adjustment_request(query)
+        
         if result is None:
             self.logger.info("No retrieval result")
             # Only use JSON-only response if question is about the drawing
@@ -126,16 +129,26 @@ class ResponseGenerator:
             
             # Check if it's a list of PDFResult
             if isinstance(result[0], PDFResult):
-                self.logger.info(f"Generating PDFResponse from {len(result)} PDF results")
-                return self._generate_pdf_response_from_multiple(query, result, drawing_json, drawing_updated_at)
+                # If user is requesting adjustments and has drawing, use adjustment flow
+                if is_adjustment_request and drawing_json:
+                    self.logger.info(f"🔧 Adjustment request detected - generating compliant JSON")
+                    return self._generate_compliance_with_adjustment(query, result, drawing_json, drawing_updated_at)
+                else:
+                    self.logger.info(f"Generating PDFResponse from {len(result)} PDF results")
+                    return self._generate_pdf_response_from_multiple(query, result, drawing_json, drawing_updated_at)
         
         # Handle single result (backward compatibility)
         elif isinstance(result, PDFResult):
-            self.logger.info(
-                f"Generating PDFResponse for {result.pdf_filename}, "
-                f"page {result.page_number}"
-            )
-            return self._generate_pdf_response_from_single(query, result, drawing_json, drawing_updated_at)
+            # If user is requesting adjustments and has drawing, use adjustment flow
+            if is_adjustment_request and drawing_json:
+                self.logger.info(f"🔧 Adjustment request detected - generating compliant JSON")
+                return self._generate_compliance_with_adjustment(query, [result], drawing_json, drawing_updated_at)
+            else:
+                self.logger.info(
+                    f"Generating PDFResponse for {result.pdf_filename}, "
+                    f"page {result.page_number}"
+                )
+                return self._generate_pdf_response_from_single(query, result, drawing_json, drawing_updated_at)
         
         else:
             self.logger.error(f"Unexpected result type: {type(result)}")
@@ -237,6 +250,83 @@ class ResponseGenerator:
             score=1.0,  # Perfect score since we're using the exact data
             document_id="json_only",
             title=f"Building Drawing Analysis (Updated: {drawing_updated_at or 'Unknown'})"
+        )
+    
+    def _generate_compliance_with_adjustment(
+        self,
+        query: str,
+        pdf_results: List[PDFResult],
+        drawing_json: Dict[str, Any],
+        drawing_updated_at: Optional[str] = None
+    ) -> PDFResponse:
+        """
+        Generate response with compliance analysis and adjusted compliant JSON.
+        
+        Args:
+            query: User's question
+            pdf_results: List of PDF results with regulations
+            drawing_json: User's building drawing JSON
+            drawing_updated_at: ISO timestamp of when drawing was last updated
+            
+        Returns:
+            PDFResponse with compliance analysis and adjusted JSON
+        """
+        self.logger.info("🔧 Generating compliance analysis with adjusted JSON")
+        
+        # Format drawing context
+        drawing_context = self._format_drawing_context(drawing_json, drawing_updated_at)
+        
+        # Format timestamp for display
+        formatted_timestamp = self.prompt_templates.format_timestamp(drawing_updated_at) if drawing_updated_at else ""
+        
+        # Use prompt builder to create compliance adjustment prompt
+        prompt, system_prompt = self.prompt_builder.build_compliance_with_adjustment(
+            query=query,
+            pdf_results=pdf_results,
+            drawing_context=drawing_context,
+            drawing_json=drawing_json,
+            formatted_timestamp=formatted_timestamp
+        )
+        
+        self.logger.info(f"📝 Compliance adjustment prompt created ({len(prompt)} chars)")
+        
+        answer = self.llm_service.generate(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            max_tokens=2000  # Increase token limit for JSON generation
+        )
+        
+        self.logger.info(f"✅ Compliance adjustment answer generated")
+        
+        # Build all_sources list with all PDF results
+        all_sources = []
+        for i, result in enumerate(pdf_results):
+            all_sources.append({
+                "type": "pdf",
+                "document": result.pdf_filename,
+                "page": result.page_number,
+                "paragraph": result.paragraph_index,
+                "snippet": result.source_snippet,
+                "relevance": result.score,
+                "title": result.title,
+                "selected": (i == 0)  # Mark first as selected
+            })
+        
+        # Return response with the best result's metadata
+        best_result = pdf_results[0]
+        
+        return PDFResponse(
+            answer_type="pdf",
+            pdf_filename=best_result.pdf_filename,
+            page_number=best_result.page_number,
+            paragraph_index=best_result.paragraph_index,
+            source_snippet=best_result.source_snippet,
+            generated_answer=answer,
+            score=best_result.score,
+            document_id=best_result.document_id,
+            title=f"Compliance Analysis with Adjusted Design (Drawing: {drawing_updated_at or 'Unknown'})",
+            all_sources=all_sources,
+            selected_source_index=0
         )
     
     def _generate_pdf_response_from_single(
@@ -529,7 +619,13 @@ class ResponseGenerator:
         Returns:
             Formatted string describing the building specifications
         """
+        self.logger.info("🎨 _format_drawing_context called")
+        self.logger.info(f"   drawing_json type: {type(drawing_json)}")
+        self.logger.info(f"   drawing_json is None: {drawing_json is None}")
+        self.logger.info(f"   drawing_json is empty: {not drawing_json if drawing_json else 'N/A'}")
+        
         if not drawing_json:
+            self.logger.warning("⚠️ drawing_json is empty or None, returning empty string")
             return ""
         
         # Log the raw drawing JSON for debugging
@@ -576,26 +672,72 @@ class ResponseGenerator:
                 context_parts.append(f"- Plot Dimensions: {width_m}m x {height_m}m")
                 context_parts.append(f"- Plot Area: {area_m2}m²")
             
-            # Calculate extension depth if extension and walls exist
-            walls = next((e for e in drawing_json if e.get("layer") == "Walls"), None)
-            extension = next((e for e in drawing_json if e.get("layer") == "Extension"), None)
+            # Calculate extension depth - handle multiple approaches
+            self.logger.info("🔍 Starting extension depth calculation...")
             
-            if walls and extension and "points" in walls and "points" in extension:
-                # Get rear wall Y coordinate (maximum Y)
-                wall_points = walls["points"]
-                wall_y_coords = [p[1] for p in wall_points]
-                rear_wall_y = max(wall_y_coords)
+            # Approach 1: Look for explicit "Extension" layer
+            extension = next((e for e in drawing_json if e.get("layer") == "Extension"), None)
+            self.logger.info(f"   Extension layer found: {extension is not None}")
+            
+            # Approach 2: If no Extension layer, look for multiple "Walls" layers
+            # The second Walls layer is likely the extension
+            walls_elements = [e for e in drawing_json if e.get("layer") == "Walls"]
+            self.logger.info(f"   Number of Walls layers: {len(walls_elements)}")
+            
+            if extension and "points" in extension:
+                # Found explicit Extension layer
+                self.logger.info("   Using explicit Extension layer")
+                if walls_elements and "points" in walls_elements[0]:
+                    # Get rear wall Y coordinate (maximum Y from first Walls element)
+                    wall_points = walls_elements[0]["points"]
+                    wall_y_coords = [p[1] for p in wall_points]
+                    rear_wall_y = max(wall_y_coords)
+                    
+                    # Get extension furthest point Y coordinate
+                    ext_points = extension["points"]
+                    ext_y_coords = [p[1] for p in ext_points]
+                    extension_furthest_y = max(ext_y_coords)
+                    
+                    # Calculate extension depth
+                    extension_depth_mm = abs(extension_furthest_y - rear_wall_y)
+                    extension_depth_m = round(extension_depth_mm / 1000, 2)
+                    
+                    context_parts.append(f"- Extension Depth: {extension_depth_m}m (from rear wall)")
+                    self.logger.info(f"✅ Extension depth calculated from 'Extension' layer: {extension_depth_m}m")
+            
+            elif len(walls_elements) >= 2:
+                # Multiple Walls layers - assume first is main house, second is extension
+                self.logger.info("   Using second Walls layer as extension")
+                main_house = walls_elements[0]
+                extension_element = walls_elements[1]
                 
-                # Get extension furthest point Y coordinate
-                ext_points = extension["points"]
-                ext_y_coords = [p[1] for p in ext_points]
-                extension_furthest_y = max(ext_y_coords)
+                self.logger.info(f"   Main house has points: {'points' in main_house}")
+                self.logger.info(f"   Extension has points: {'points' in extension_element}")
                 
-                # Calculate extension depth
-                extension_depth_mm = abs(extension_furthest_y - rear_wall_y)
-                extension_depth_m = round(extension_depth_mm / 1000, 2)
-                
-                context_parts.append(f"- Extension Depth: {extension_depth_m}m (from rear wall)")
+                if "points" in main_house and "points" in extension_element:
+                    # Get rear wall Y coordinate (maximum Y from main house)
+                    wall_points = main_house["points"]
+                    wall_y_coords = [p[1] for p in wall_points]
+                    rear_wall_y = max(wall_y_coords)
+                    
+                    # Get extension furthest point Y coordinate
+                    ext_points = extension_element["points"]
+                    ext_y_coords = [p[1] for p in ext_points]
+                    extension_furthest_y = max(ext_y_coords)
+                    
+                    # Calculate extension depth
+                    extension_depth_mm = abs(extension_furthest_y - rear_wall_y)
+                    extension_depth_m = round(extension_depth_mm / 1000, 2)
+                    
+                    context_parts.append(f"- Extension Depth: {extension_depth_m}m (from rear wall)")
+                    self.logger.info(f"✅ Extension depth calculated from second 'Walls' layer: {extension_depth_m}m")
+                    self.logger.info(f"   Main house rear wall Y: {rear_wall_y}")
+                    self.logger.info(f"   Extension furthest Y: {extension_furthest_y}")
+                else:
+                    self.logger.warning(f"⚠️ Walls elements missing 'points' field")
+            
+            else:
+                self.logger.warning("⚠️ Could not calculate extension depth - no Extension layer or multiple Walls layers found")
             
             # Check proximity to highway
             has_highway = any(e.get("layer") == "Highway" for e in drawing_json)
