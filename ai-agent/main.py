@@ -40,8 +40,16 @@ class QueryRequest(BaseModel):
         default_factory=dict,
         description="User's drawing JSON from session (can be object or array of drawing elements)"
     )
+    drawing_updated_at: Optional[str] = Field(
+        default=None,
+        description="ISO timestamp of when the drawing was last updated"
+    )
+    session_id: Optional[str] = Field(
+        default=None,
+        description="Session ID for conversation history"
+    )
     top_k: Optional[int] = Field(
-        default=5,
+        default=10,
         description="Number of document chunks to retrieve",
         ge=1,
         le=20
@@ -55,7 +63,9 @@ class QueryRequest(BaseModel):
                     {"type": "POLYLINE", "layer": "Walls", "points": [[0, 0], [10, 0], [10, 10], [0, 10]], "closed": True},
                     {"type": "POLYLINE", "layer": "Plot Boundary", "points": [[0, 0], [20, 0], [20, 20], [0, 20]], "closed": True}
                 ],
-                "top_k": 5
+                "drawing_updated_at": "2026-01-17T10:30:00Z",
+                "session_id": "session_123456",
+                "top_k": 10
             }
         }
 
@@ -189,18 +199,20 @@ async def health_check():
 @app.post("/api/agent/query", response_model=QueryResponse)
 async def process_query(request: QueryRequest):
     """
-    Process a query using the hybrid RAG pipeline with Explaino.
+    Process a query using the hybrid RAG pipeline with Explaino and conversation history.
     
     This endpoint:
-    1. Takes user's question and optional drawing JSON
-    2. Preprocesses the question (stopword removal, etc.)
-    3. Retrieves relevant PDF documents using Explaino RAG
-    4. Combines retrieved documents with user's drawing JSON
-    5. Sends both to LLM for reasoning
-    6. Returns the best answer
+    1. Takes user's question, optional drawing JSON, and optional session_id
+    2. Retrieves conversation history if session_id provided
+    3. Preprocesses the question (stopword removal, etc.)
+    4. Retrieves relevant PDF documents using Explaino RAG
+    5. Combines retrieved documents with user's drawing JSON and conversation history
+    6. Sends all context to LLM for reasoning
+    7. Returns the best answer
+    8. Saves the exchange to conversation history
     
     Args:
-        request: QueryRequest containing question, drawing_json, and optional top_k
+        request: QueryRequest containing question, drawing_json, session_id, and optional top_k
         
     Returns:
         QueryResponse with the generated answer and sources
@@ -227,6 +239,9 @@ async def process_query(request: QueryRequest):
     try:
         logger.info(f"Processing query: {request.question}")
         logger.info(f"Drawing JSON provided: {bool(request.drawing_json)}")
+        logger.info(f"Drawing updated at: {request.drawing_updated_at}")
+        logger.info(f"Session ID provided: {request.session_id}")
+        
         if request.drawing_json:
             logger.info(f"Drawing JSON type: {type(request.drawing_json)}")
             if isinstance(request.drawing_json, list):
@@ -238,10 +253,12 @@ async def process_query(request: QueryRequest):
             else:
                 logger.info(f"Drawing JSON content: {request.drawing_json}")
         
-        # Process the query through the RAG system (with drawing JSON)
+        # Process the query through the RAG system (with drawing JSON, timestamp, and session_id)
         result = rag_system.answer_question(
             question=request.question,
-            drawing_json=request.drawing_json if request.drawing_json else None
+            drawing_json=request.drawing_json if request.drawing_json else None,
+            drawing_updated_at=request.drawing_updated_at,
+            session_id=request.session_id
         )
         
         # Extract answer and sources based on result type
@@ -273,11 +290,29 @@ async def process_query(request: QueryRequest):
                 sources = [source]
             
             drawing_context_used = bool(request.drawing_json)
+            
+            # Save to conversation history if session_id provided
+            if request.session_id:
+                rag_system.conversation_manager.add_exchange(
+                    session_id=request.session_id,
+                    question=request.question,
+                    answer=answer
+                )
+                logger.info(f"💾 Saved exchange to conversation history (session: {request.session_id})")
         elif isinstance(result, NoAnswerResponse):
             answer = result.message
             answer_type = "no_answer"
             sources = None
             drawing_context_used = False
+            
+            # Still save to conversation history if session_id provided
+            if request.session_id:
+                rag_system.conversation_manager.add_exchange(
+                    session_id=request.session_id,
+                    question=request.question,
+                    answer=answer
+                )
+                logger.info(f"💾 Saved no-answer exchange to conversation history (session: {request.session_id})")
         else:
             raise ValueError(f"Unexpected result type: {type(result)}")
         
@@ -315,6 +350,132 @@ async def process_query(request: QueryRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to process query: An unexpected error occurred"
+        )
+
+
+@app.post("/api/agent/clear-history")
+async def clear_history(session_id: str):
+    """
+    Clear conversation history for a session.
+    
+    Args:
+        session_id: Session ID to clear history for
+        
+    Returns:
+        Success message
+        
+    Raises:
+        HTTPException: If RAG system is not initialized
+    """
+    if rag_system is None:
+        logger.error("Clear history attempted but RAG system not initialized")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI Agent service temporarily unavailable"
+        )
+    
+    try:
+        cleared = rag_system.conversation_manager.clear_session(session_id)
+        
+        if cleared:
+            logger.info(f"🗑️  Cleared conversation history for session: {session_id}")
+            return {
+                "success": True,
+                "message": f"Conversation history cleared for session {session_id}"
+            }
+        else:
+            logger.warning(f"Attempted to clear non-existent session: {session_id}")
+            return {
+                "success": True,
+                "message": "Session not found or already cleared"
+            }
+    except Exception as e:
+        logger.error(f"Error clearing history: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to clear conversation history"
+        )
+
+
+@app.get("/api/agent/session-info/{session_id}")
+async def get_session_info(session_id: str):
+    """
+    Get information about a conversation session.
+    
+    Args:
+        session_id: Session ID to get info for
+        
+    Returns:
+        Session information including message count
+        
+    Raises:
+        HTTPException: If RAG system is not initialized
+    """
+    if rag_system is None:
+        logger.error("Session info attempted but RAG system not initialized")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI Agent service temporarily unavailable"
+        )
+    
+    try:
+        message_count = rag_system.conversation_manager.get_message_count(session_id)
+        
+        return {
+            "session_id": session_id,
+            "message_count": message_count,
+            "exchange_count": message_count // 2  # Each exchange = 2 messages
+        }
+    except Exception as e:
+        logger.error(f"Error getting session info: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get session information"
+        )
+
+
+@app.get("/api/agent/knowledge-summary")
+async def get_knowledge_summary():
+    """
+    Get the knowledge summary showing what topics the system can answer.
+    
+    Returns:
+        Knowledge summary with overview, topics, and suggested questions
+        
+    Raises:
+        HTTPException: If RAG system is not initialized or summary not available
+    """
+    if rag_system is None:
+        logger.error("Knowledge summary attempted but RAG system not initialized")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI Agent service temporarily unavailable"
+        )
+    
+    try:
+        summary = rag_system.knowledge_summary_generator.load_summary()
+        
+        if summary is None:
+            logger.warning("Knowledge summary not found")
+            # Return a default summary
+            return {
+                "overview": "This system can answer questions about your documents and drawings.",
+                "topics": ["Document Analysis", "Drawing Analysis", "General Questions"],
+                "suggested_questions": [
+                    "What topics are covered in the documents?",
+                    "What are the main regulations?",
+                    "How can I analyze my drawing?"
+                ]
+            }
+        
+        logger.info("Knowledge summary retrieved successfully")
+        return summary
+        
+    except Exception as e:
+        logger.error(f"Error getting knowledge summary: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get knowledge summary"
         )
 
 

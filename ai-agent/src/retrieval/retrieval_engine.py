@@ -44,7 +44,8 @@ class RetrievalEngine:
     def retrieve(
         self,
         query_embedding: np.ndarray,
-        query_text: str = ""
+        query_text: str = "",
+        k: Optional[int] = None
     ) -> Union[List[PDFResult], None]:
         """
         Execute retrieval using OpenSearch k-NN search.
@@ -55,18 +56,21 @@ class RetrievalEngine:
         3. Otherwise, return None (no answer)
         
         Args:
-            query_embedding: Query vector embedding
-            query_text: Original query text (unused, kept for compatibility)
-            
+            query_embedding: Query embedding vector
+            query_text: Original query text for logging
+            k: Optional override for number of results (default: use config.max_results)
+        
         Returns:
-            List[PDFResult] if PDF matches found above threshold
-            None if no results above threshold
+            List of PDFResult objects or None if no results
         """
+        if k is None:
+            k = self.max_results
+        
         self.logger.info("Starting PDF retrieval")
         
         # Search PDF documents with k-NN search
         self.logger.debug("Searching PDF documents with k-NN search")
-        pdf_results = self.search_pdfs(query_embedding, query_text)
+        pdf_results = self.search_pdfs(query_embedding, query_text, k)
         
         if pdf_results:
             top_pdf = pdf_results[0]
@@ -89,24 +93,28 @@ class RetrievalEngine:
         self.logger.info("No results above threshold in either source")
         return None
     
-    def search_pdfs(self, query_embedding: np.ndarray, query_text: str = "") -> List[PDFResult]:
+    def search_pdfs(self, query_embedding: np.ndarray, query_text: str = "", k: Optional[int] = None) -> List[PDFResult]:
         """
         Search PDF document chunks in OpenSearch using k-NN search.
         
         Args:
             query_embedding: Query vector embedding
             query_text: Original query text (not used, kept for backward compatibility)
+            k: Optional number of results to retrieve (defaults to self.max_results)
             
         Returns:
             List of PDFResult objects, sorted by score (descending)
         """
+        if k is None:
+            k = self.max_results
+            
         self.logger.debug("Executing k-NN search for PDF documents")
         
         try:
             # Execute k-NN search
             raw_results = self.knn_search(
                 query_embedding=query_embedding,
-                k=self.max_results
+                k=k
             )
             
             # Parse results into PDFResult objects

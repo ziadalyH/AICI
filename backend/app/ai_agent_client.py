@@ -41,7 +41,9 @@ class AIAgentClient:
         self,
         question: str,
         objects: List[Dict[str, Any]],
-        top_k: int
+        drawing_updated_at: Optional[str],
+        top_k: int,
+        session_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Internal method to make the HTTP request with retry logic.
@@ -49,7 +51,9 @@ class AIAgentClient:
         Args:
             question: User's natural-language question
             objects: List of ephemeral objects for the current session
+            drawing_updated_at: ISO timestamp of when drawing was last updated
             top_k: Number of document chunks to retrieve
+            session_id: Optional session ID for conversation history
             
         Returns:
             Full response dictionary with answer, sources, answer_type, etc.
@@ -63,13 +67,18 @@ class AIAgentClient:
         payload = {
             "question": question,
             "drawing_json": objects,  # AI agent expects 'drawing_json' not 'objects'
+            "drawing_updated_at": drawing_updated_at,
             "top_k": top_k
         }
+        
+        # Add session_id if provided
+        if session_id:
+            payload["session_id"] = session_id
         
         # Log the payload being sent
         import logging
         logger = logging.getLogger(__name__)
-        logger.info(f"Sending to AI Agent: question='{question[:50]}...', drawing_json={len(objects)} objects, top_k={top_k}")
+        logger.info(f"Sending to AI Agent: question='{question[:50]}...', drawing_json={len(objects)} objects, drawing_updated_at={drawing_updated_at}, top_k={top_k}, session_id={session_id}")
         if objects:
             logger.info(f"Drawing JSON preview: {str(objects)[:200]}...")
         
@@ -91,7 +100,9 @@ class AIAgentClient:
         self,
         question: str,
         objects: List[Dict[str, Any]],
-        top_k: int = 5
+        drawing_updated_at: Optional[str] = None,
+        top_k: int = 5,
+        session_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Send a query to the AI Agent service.
@@ -99,7 +110,9 @@ class AIAgentClient:
         Args:
             question: User's natural-language question
             objects: List of ephemeral objects for the current session
+            drawing_updated_at: ISO timestamp of when drawing was last updated
             top_k: Number of document chunks to retrieve (default: 5)
+            session_id: Optional session ID for conversation history
             
         Returns:
             Full response dictionary with answer, sources, answer_type, etc.
@@ -115,7 +128,7 @@ class AIAgentClient:
             raise ValueError("Question cannot be empty")
         
         try:
-            return await self._make_request(question, objects, top_k)
+            return await self._make_request(question, objects, drawing_updated_at, top_k, session_id)
         
         except RetryError as e:
             # Extract the underlying exception from RetryError
@@ -163,6 +176,31 @@ class AIAgentClient:
                 return response.status_code == 200
         except Exception:
             return False
+    
+    async def get_knowledge_summary(self) -> Dict[str, Any]:
+        """
+        Get the knowledge summary from the AI Agent.
+        
+        Returns:
+            Dictionary with overview, topics, and suggested_questions
+            
+        Raises:
+            httpx.HTTPStatusError: If the AI Agent returns an error status
+            httpx.TimeoutException: If the request times out
+            httpx.ConnectError: If unable to connect to the AI Agent
+        """
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    f"{self.base_url}/api/agent/knowledge-summary"
+                )
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to get knowledge summary: {e}")
+            raise
 
 
 # Global AI Agent client instance

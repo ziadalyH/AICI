@@ -5,7 +5,7 @@ import time
 import string
 from typing import List, Optional
 import numpy as np
-import openai
+from openai import OpenAI
 import nltk
 from nltk.corpus import stopwords
 
@@ -64,7 +64,7 @@ class EmbeddingEngine:
             raise ValueError("OpenAI API key not configured")
         
         self.logger.info(f"Initializing OpenAI client with model: {self.model_name}")
-        openai.api_key = self.config.openai_api_key
+        self.openai_client = OpenAI(api_key=self.config.openai_api_key)
     
     def _initialize_local_model(self) -> None:
         """Initialize local sentence transformer model."""
@@ -232,12 +232,12 @@ class EmbeddingEngine:
         for attempt in range(max_retries):
             try:
                 self.logger.debug(f"Generating OpenAI embedding for text: {text[:50]}...")
-                response = openai.Embedding.create(
+                response = self.openai_client.embeddings.create(
                     model=self.model_name,
                     input=text
                 )
                 
-                embedding = np.array(response['data'][0]['embedding'], dtype=np.float32)
+                embedding = np.array(response.data[0].embedding, dtype=np.float32)
                 
                 # Validate embedding dimension
                 if len(embedding) != self.embedding_dimension:
@@ -249,31 +249,27 @@ class EmbeddingEngine:
                 self.logger.debug(f"Successfully generated embedding of dimension {len(embedding)}")
                 return embedding
                 
-            except openai.error.RateLimitError as e:
-                if attempt < max_retries - 1:
-                    delay = base_delay * (2 ** attempt)
-                    self.logger.warning(
-                        f"Rate limit hit, retrying in {delay}s (attempt {attempt + 1}/{max_retries})"
-                    )
-                    time.sleep(delay)
-                else:
-                    self.logger.error(f"Rate limit exceeded after {max_retries} attempts")
-                    raise
-                    
-            except openai.error.APIError as e:
-                if attempt < max_retries - 1:
+            except Exception as e:
+                error_str = str(e).lower()
+                if "rate" in error_str and "limit" in error_str:
+                    if attempt < max_retries - 1:
+                        delay = base_delay * (2 ** attempt)
+                        self.logger.warning(
+                            f"Rate limit hit, retrying in {delay}s (attempt {attempt + 1}/{max_retries})"
+                        )
+                        time.sleep(delay)
+                    else:
+                        self.logger.error(f"Rate limit exceeded after {max_retries} attempts")
+                        raise
+                elif attempt < max_retries - 1:
                     delay = base_delay * (2 ** attempt)
                     self.logger.warning(
                         f"API error: {str(e)}, retrying in {delay}s (attempt {attempt + 1}/{max_retries})"
                     )
                     time.sleep(delay)
                 else:
-                    self.logger.error(f"API error after {max_retries} attempts: {str(e)}")
+                    self.logger.error(f"Error after {max_retries} attempts: {str(e)}")
                     raise
-                    
-            except Exception as e:
-                self.logger.error(f"Unexpected error generating embedding: {str(e)}")
-                raise
     
     def _embed_text_local(self, text: str) -> np.ndarray:
         """Generate embedding using local sentence transformer model.
@@ -461,14 +457,14 @@ class EmbeddingEngine:
             # Retry logic for batch
             for attempt in range(max_retries):
                 try:
-                    response = openai.Embedding.create(
+                    response = self.openai_client.embeddings.create(
                         model=self.model_name,
                         input=batch_texts
                     )
                     
                     # Extract embeddings and add to list
-                    for i, embedding_data in enumerate(response['data']):
-                        embedding = np.array(embedding_data['embedding'], dtype=np.float32)
+                    for i, embedding_data in enumerate(response.data):
+                        embedding = np.array(embedding_data.embedding, dtype=np.float32)
                         
                         # Validate dimension
                         if len(embedding) != self.embedding_dimension:
@@ -486,22 +482,22 @@ class EmbeddingEngine:
                     self.logger.debug(f"Successfully processed batch of {len(batch_texts)} texts")
                     break  # Success, exit retry loop
                     
-                except openai.error.RateLimitError as e:
-                    if attempt < max_retries - 1:
-                        delay = base_delay * (2 ** attempt)
-                        self.logger.warning(
-                            f"Rate limit hit on batch, retrying in {delay}s "
-                            f"(attempt {attempt + 1}/{max_retries})"
-                        )
-                        time.sleep(delay)
-                    else:
-                        self.logger.error(
-                            f"Rate limit exceeded after {max_retries} attempts on batch"
-                        )
-                        raise
-                        
-                except openai.error.APIError as e:
-                    if attempt < max_retries - 1:
+                except Exception as e:
+                    error_str = str(e).lower()
+                    if "rate" in error_str and "limit" in error_str:
+                        if attempt < max_retries - 1:
+                            delay = base_delay * (2 ** attempt)
+                            self.logger.warning(
+                                f"Rate limit hit on batch, retrying in {delay}s "
+                                f"(attempt {attempt + 1}/{max_retries})"
+                            )
+                            time.sleep(delay)
+                        else:
+                            self.logger.error(
+                                f"Rate limit exceeded after {max_retries} attempts on batch"
+                            )
+                            raise
+                    elif attempt < max_retries - 1:
                         delay = base_delay * (2 ** attempt)
                         self.logger.warning(
                             f"API error on batch: {str(e)}, retrying in {delay}s "
@@ -510,12 +506,8 @@ class EmbeddingEngine:
                         time.sleep(delay)
                     else:
                         self.logger.error(
-                            f"API error after {max_retries} attempts on batch: {str(e)}"
+                            f"Error after {max_retries} attempts on batch: {str(e)}"
                         )
                         raise
-                        
-                except Exception as e:
-                    self.logger.error(f"Unexpected error processing batch: {str(e)}")
-                    raise
         
         return result

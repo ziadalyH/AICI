@@ -18,7 +18,9 @@ interface RegisterResponse {
 
 interface QueryResponse {
   answer: string;
-  sources?: string[];
+  sources?: any[];
+  answer_type?: string;
+  drawing_context_used?: boolean;
 }
 
 interface UpdateObjectListResponse {
@@ -174,6 +176,31 @@ class ApiClient {
       const response = await this.client.post<QueryResponse>("/api/query", {
         question,
       });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Conversation history methods
+  async clearConversationHistory(): Promise<void> {
+    try {
+      // The backend automatically uses the user's session_id
+      // No need to pass it explicitly
+      await this.client.post("/api/agent/clear-history");
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Knowledge summary methods
+  async getKnowledgeSummary(): Promise<{
+    overview: string;
+    topics: string[];
+    suggested_questions: string[];
+  }> {
+    try {
+      const response = await this.client.get("/api/knowledge-summary");
       return response.data;
     } catch (error) {
       throw error;

@@ -110,21 +110,39 @@ class KnowledgeSummaryGenerator:
 
 {context}
 
+IMPORTANT INSTRUCTIONS FOR SUGGESTED QUESTIONS:
+- Questions MUST be specific and directly answerable from the sample content shown above
+- Questions should reference specific topics, regulations, or concepts mentioned in the samples
+- Avoid generic questions like "What are the main regulations?" - instead ask about SPECIFIC regulations you see
+- Each question should be concrete enough that someone reading the samples could answer it
+- Focus on factual questions about specific details, requirements, or rules mentioned in the content
+
 Please provide:
 1. A brief overview of the main topics covered (2-3 sentences)
-2. A list of 5-10 key topics/subjects
-3. 8-12 example questions users can ask
+2. A list of 5-10 key topics/subjects that are actually present in the sample content
+3. 8-12 SPECIFIC example questions that can be answered from the content (not generic questions)
 
 Format your response as JSON:
 {{
   "overview": "Brief overview text...",
-  "topics": ["Topic 1", "Topic 2", ...],
+  "topics": ["Specific Topic 1", "Specific Topic 2", ...],
   "suggested_questions": [
-    "Question 1?",
-    "Question 2?",
+    "Specific question about Topic 1?",
+    "Specific question about a detail in Topic 2?",
     ...
   ]
-}}"""
+}}
+
+Example of GOOD questions (specific):
+- "What is the maximum height limit for residential buildings?"
+- "What are the setback requirements for extensions?"
+- "How is floor area calculated for planning purposes?"
+
+Example of BAD questions (too generic):
+- "What are the main regulations?"
+- "Tell me about the rules"
+- "What information is available?"
+"""
         
         try:
             self.logger.info("🤖 Generating knowledge summary with LLM...")
@@ -132,9 +150,9 @@ Format your response as JSON:
             # Use centralized LLM service
             summary_data = self.llm_service.generate_json(
                 prompt=prompt,
-                system_prompt="You are a helpful assistant that analyzes document collections and generates summaries. Always respond with valid JSON.",
-                temperature=0.7,
-                max_tokens=1000
+                system_prompt="You are a helpful assistant that analyzes document collections and generates summaries with SPECIFIC, answerable questions. Always respond with valid JSON. Focus on concrete, detailed questions that reference specific content.",
+                temperature=0.5,  # Lower temperature for more focused output
+                max_tokens=1200
             )
             
             # Validate structure
@@ -146,14 +164,19 @@ Format your response as JSON:
             
         except Exception as e:
             self.logger.error(f"Failed to generate summary with LLM: {e}")
-            # Return fallback summary
+            # Return fallback summary with specific questions
             return {
-                "overview": "This knowledge base contains various documents and videos on multiple topics.",
-                "topics": ["General Knowledge"],
+                "overview": "This knowledge base contains building regulations and planning documents with specific requirements and guidelines.",
+                "topics": ["Building Regulations", "Planning Requirements", "Height Restrictions", "Setback Rules"],
                 "suggested_questions": [
-                    "What topics are covered in this knowledge base?",
-                    "Can you summarize the main content?",
-                    "What information is available?"
+                    "What are the height restrictions for residential buildings?",
+                    "What are the setback requirements from boundaries?",
+                    "How is permitted development defined?",
+                    "What are the requirements for extensions?",
+                    "What is the maximum floor area allowed?",
+                    "What are the parking requirements?",
+                    "What materials are permitted for construction?",
+                    "What are the fire safety requirements?"
                 ]
             }
     

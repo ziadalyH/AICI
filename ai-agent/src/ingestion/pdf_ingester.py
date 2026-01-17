@@ -42,9 +42,10 @@ class PDFIngester:
         self.pdf_dir = config.pdf_dir
         
         # Chunking parameters (paragraph-level with overlap)
-        self.target_chunk_size = 512  # tokens per chunk
-        self.max_chunk_size = 768     # tokens (allow some flexibility)
-        self.chunk_overlap = 128      # tokens overlap between chunks
+        # IMPROVED: Larger chunks for better context and complete rule descriptions
+        self.target_chunk_size = 1024  # tokens per chunk (increased from 512)
+        self.max_chunk_size = 1536     # tokens (increased from 768)
+        self.chunk_overlap = 256       # tokens overlap (increased from 128)
         
         # Paragraph extraction settings
         self.min_paragraph_length = 20  # characters (very permissive)

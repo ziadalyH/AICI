@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import './ObjectListEditor.css';
-import ErrorMessage from './ErrorMessage';
 
 interface ObjectListEditorProps {
   onUpdate: (objects: any[]) => Promise<void>;
@@ -100,57 +99,66 @@ const ObjectListEditor: React.FC<ObjectListEditorProps> = ({ onUpdate, onFetch, 
 
   if (isLoadingData) {
     return (
-      <div className="object-list-editor-container">
-        <p>Loading saved drawing...</p>
+      <div className="editor-card">
+        <div className="editor-loading">
+          <div className="loading-spinner"></div>
+          <p className="text-muted">Loading saved drawing...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="object-list-editor-container">
-      <h3>Drawing JSON Editor</h3>
-      <p className="editor-description">
-        View and edit your drawing JSON. Changes are saved to your account.
-      </p>
+    <div className="editor-card">
+      <div className="editor-header">
+        <h3 className="editor-title">Drawing JSON</h3>
+        <p className="editor-description">
+          Edit your drawing data
+        </p>
+      </div>
       
       {/* Timestamp Display */}
       {(createdAt || updatedAt) && (
         <div className="timestamp-info">
-          {createdAt && (
-            <div className="timestamp-item">
-              <strong>Created:</strong> {formatDate(createdAt)}
-            </div>
-          )}
           {updatedAt && (
             <div className="timestamp-item">
-              <strong>Last Updated:</strong> {formatDate(updatedAt)}
+              <span className="timestamp-label">Last updated</span>
+              <span className="timestamp-value">{formatDate(updatedAt)}</span>
             </div>
           )}
         </div>
       )}
       
-      <textarea
-        value={jsonText}
-        onChange={handleTextChange}
-        placeholder='[{"id": "obj_001", "type": "example", "properties": {...}}]'
-        disabled={isLoading}
-        className="json-textarea"
-        rows={15}
-      />
-      {validationError && (
-        <ErrorMessage 
-          error={validationError} 
-          onDismiss={() => setValidationError('')} 
+      <div className="editor-content">
+        <textarea
+          value={jsonText}
+          onChange={handleTextChange}
+          placeholder='[{"type": "LINE", "layer": "Wall", ...}]'
+          disabled={isLoading}
+          className="json-textarea"
+          rows={12}
         />
-      )}
-      {successMessage && <div className="success-message">{successMessage}</div>}
-      <button 
-        onClick={handleUpdate} 
-        disabled={isLoading}
-        className="update-button"
-      >
-        {isLoading ? 'Saving...' : 'Save Drawing'}
-      </button>
+        
+        {validationError && (
+          <div className="alert alert-error">
+            {validationError}
+          </div>
+        )}
+        
+        {successMessage && (
+          <div className="alert alert-success">
+            {successMessage}
+          </div>
+        )}
+        
+        <button 
+          onClick={handleUpdate} 
+          disabled={isLoading}
+          className="btn btn-primary btn-full"
+        >
+          {isLoading ? 'Saving...' : 'Save Drawing'}
+        </button>
+      </div>
     </div>
   );
 };

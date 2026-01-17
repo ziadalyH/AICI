@@ -322,21 +322,25 @@ async def process_query(
                 detail="Session not found. Please login again."
             )
         
-        # Retrieve objects from session (drawing JSON)
-        objects = session_store.get_objects(session.session_id)
+        # Get drawing from database (permanent storage) - NOT from session
+        db_data = db.get_user_objects(current_user.id)
+        objects = db_data.get("objects", [])
+        drawing_updated_at = db_data.get("updated_at")
         
         log_info(
             info_type="QUERY_PROCESSING",
-            message=f"Processing query with {len(objects)} objects",
+            message=f"Processing query with {len(objects)} objects from database (updated: {drawing_updated_at})",
             user_id=current_user.id,
             session_id=session.session_id
         )
         
-        # Send query to AI Agent
+        # Send query to AI Agent with drawing metadata
         response = await ai_agent_client.query(
             question=request.question,
             objects=objects,
-            top_k=getattr(request, 'top_k', 5)
+            drawing_updated_at=drawing_updated_at.isoformat() if drawing_updated_at else None,
+            top_k=getattr(request, 'top_k', 10),  # Updated default to 10
+            session_id=session.session_id  # Pass session_id for conversation history
         )
         
         log_info(
@@ -408,4 +412,73 @@ async def process_query(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while processing your query"
+        )
+
+
+@query_router.get("/knowledge-summary")
+async def get_knowledge_summary(current_user: User = Depends(get_current_user)):
+    """
+    Get the knowledge summary showing what topics the system can answer.
+    
+    Args:
+        current_user: The authenticated user (injected by dependency)
+        
+    Returns:
+        Knowledge summary with overview, topics, and suggested questions
+        
+    Raises:
+        HTTPException: If AI Agent communication fails
+    """
+    from .ai_agent_client import ai_agent_client
+    
+    try:
+        log_info(
+            info_type="KNOWLEDGE_SUMMARY_REQUEST",
+            message="Fetching knowledge summary",
+            user_id=current_user.id
+        )
+        
+        # Get knowledge summary from AI Agent
+        summary = await ai_agent_client.get_knowledge_summary()
+        
+        log_info(
+            info_type="KNOWLEDGE_SUMMARY_SUCCESS",
+            message="Knowledge summary retrieved successfully",
+            user_id=current_user.id
+        )
+        
+        return summary
+        
+    except httpx.TimeoutException as e:
+        log_error(
+            error_type="AI_AGENT_TIMEOUT",
+            message="AI Agent request timed out",
+            user_id=current_user.id,
+            exception=e
+        )
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="AI Agent request timed out. Please try again."
+        )
+    except httpx.ConnectError as e:
+        log_error(
+            error_type="AI_AGENT_CONNECTION_ERROR",
+            message="Unable to connect to AI Agent",
+            user_id=current_user.id,
+            exception=e
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI Agent service is currently unavailable. Please try again later."
+        )
+    except Exception as e:
+        log_error(
+            error_type="KNOWLEDGE_SUMMARY_ERROR",
+            message="An unexpected error occurred while fetching knowledge summary",
+            user_id=current_user.id,
+            exception=e
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while fetching knowledge summary"
         )

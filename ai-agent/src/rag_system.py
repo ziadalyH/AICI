@@ -19,6 +19,7 @@ from .retrieval.query_processor import QueryProcessor
 from .retrieval.retrieval_engine import RetrievalEngine
 from .retrieval.response_generator import ResponseGenerator
 from .llm_inference import LLMInferenceService
+from .conversation_manager import ConversationManager
 from config.knowledge_summary import KnowledgeSummaryGenerator
 
 
@@ -96,6 +97,9 @@ class RAGSystem:
             llm_service=self.llm_service
         )
         
+        # Initialize conversation manager
+        self.conversation_manager = ConversationManager(logger=self.logger)
+        
         self.logger.info("RAG System initialized successfully")
     
     def _setup_logger(self) -> logging.Logger:
@@ -126,20 +130,25 @@ class RAGSystem:
     def answer_question(
         self,
         question: str,
-        drawing_json: Optional[Dict[str, Any]] = None
+        drawing_json: Optional[Dict[str, Any]] = None,
+        drawing_updated_at: Optional[str] = None,
+        session_id: Optional[str] = None
     ) -> Union[PDFResponse, NoAnswerResponse]:
         """
-        Main entry point for answering questions.
+        Main entry point for answering questions with conversation context.
         
         This method implements the complete query pipeline:
-        1. Process and embed the query
-        2. Retrieve relevant PDF content
-        3. Generate natural language answer with LLM (including drawing JSON context)
-        4. Return structured response with citations
+        1. Add conversation context if session_id provided
+        2. Process and embed the query
+        3. Retrieve relevant PDF content
+        4. Generate natural language answer with LLM (including drawing JSON context and timestamp)
+        5. Return structured response with citations
         
         Args:
             question: User's question as a string
             drawing_json: Optional user's building drawing JSON for context
+            drawing_updated_at: Optional ISO timestamp of when drawing was last updated
+            session_id: Optional session ID for conversation history
             
         Returns:
             PDFResponse if PDF content found and LLM can answer
@@ -152,8 +161,22 @@ class RAGSystem:
         self.logger.info(f"Processing question: {question[:100]}...")
         if drawing_json:
             self.logger.info(f"Drawing JSON provided: {drawing_json}")
+        if drawing_updated_at:
+            self.logger.info(f"Drawing updated at: {drawing_updated_at}")
+        if session_id:
+            self.logger.info(f"Session ID provided: {session_id}")
         
         try:
+            # Step 0: Get conversation history if session_id provided
+            conversation_history = None
+            if session_id:
+                conversation_history = self.conversation_manager.get_formatted_history(
+                    session_id=session_id,
+                    last_n=3  # Include last 3 exchanges
+                )
+                if conversation_history:
+                    self.logger.info(f"📜 Including conversation history ({len(conversation_history)} chars)")
+            
             # Step 1: Process and embed the query
             self.logger.info("Step 1: Processing query")
             query_embedding = self.query_processor.process_query(question)
@@ -162,12 +185,14 @@ class RAGSystem:
             self.logger.info("Step 2: Retrieving relevant PDF content")
             retrieval_result = self.retrieval_engine.retrieve(query_embedding, question)
             
-            # Step 3: Generate response with LLM-based answer (including drawing JSON)
+            # Step 3: Generate response with LLM-based answer (including drawing JSON, timestamp, and conversation history)
             self.logger.info("Step 3: Generating response")
             response = self.response_generator.generate_response(
                 query=question,
                 result=retrieval_result,
-                drawing_json=drawing_json
+                drawing_json=drawing_json,
+                drawing_updated_at=drawing_updated_at,
+                conversation_history=conversation_history
             )
             
             self.logger.info(f"Successfully generated {response.answer_type} response")
@@ -241,8 +266,26 @@ class RAGSystem:
             
             # Check if there's anything to index
             if not pdf_paragraphs:
-                self.logger.info("All files are already indexed. Nothing to do.")
+                self.logger.info("All files are already indexed. Skipping indexing.")
                 self.logger.info("Use force_rebuild=True to reindex everything.")
+                # Still generate knowledge summary even if no new indexing
+                self.logger.info("Generating knowledge summary from existing index...")
+                try:
+                    # Check if LLM API key is configured
+                    if not self.config.llm_api_key:
+                        self.logger.warning("LLM API key not configured. Skipping knowledge summary.")
+                    else:
+                        # Get sample chunks from existing index
+                        sample_chunks = self._get_sample_chunks_from_index()
+                        
+                        # Generate summary
+                        self.knowledge_summary_generator.generate_summary(
+                            pdf_files=list(indexed_pdfs),
+                            video_ids=[],
+                            sample_chunks=sample_chunks
+                        )
+                except Exception as e:
+                    self.logger.warning(f"Failed to generate knowledge summary: {e}")
                 return
             
             # Step 2: Chunk PDF paragraphs
@@ -269,10 +312,10 @@ class RAGSystem:
             # Generate knowledge summary
             self.logger.info("Generating knowledge summary...")
             try:
-                # Check if LLM service is available
-                if not self.llm_service.is_available():
+                # Check if LLM API key is configured
+                if not self.config.llm_api_key:
                     self.logger.warning(
-                        "LLM service not available yet. Skipping knowledge summary generation. "
+                        "LLM API key not configured. Skipping knowledge summary generation. "
                         "Knowledge summary will be generated on next indexing after LLM setup is complete."
                     )
                 else:
@@ -303,6 +346,42 @@ class RAGSystem:
             sample_size = min(20, len(pdf_chunks))
             step = max(1, len(pdf_chunks) // sample_size)
             sample_chunks['pdf'] = [chunk.text for chunk in pdf_chunks[::step][:sample_size]]
+        
+        return sample_chunks
+    
+    def _get_sample_chunks_from_index(self):
+        """Get sample PDF chunks from existing OpenSearch index for summary generation."""
+        sample_chunks = {
+            'pdf': []
+        }
+        
+        try:
+            # Query OpenSearch for sample documents
+            if self.opensearch_client.indices.exists(index=self.config.opensearch_pdf_index):
+                response = self.opensearch_client.search(
+                    index=self.config.opensearch_pdf_index,
+                    body={
+                        "size": 30,  # Get 30 random samples
+                        "query": {
+                            "function_score": {
+                                "query": {"match_all": {}},
+                                "random_score": {}
+                            }
+                        },
+                        "_source": ["text"]
+                    }
+                )
+                
+                if 'hits' in response and 'hits' in response['hits']:
+                    sample_chunks['pdf'] = [
+                        hit['_source']['text'] 
+                        for hit in response['hits']['hits']
+                        if 'text' in hit['_source']
+                    ]
+                    self.logger.info(f"Retrieved {len(sample_chunks['pdf'])} sample chunks from index")
+        
+        except Exception as e:
+            self.logger.warning(f"Error retrieving sample chunks from index: {e}")
         
         return sample_chunks
     

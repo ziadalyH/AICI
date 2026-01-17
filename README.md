@@ -47,6 +47,11 @@ The Hybrid RAG Q&A System is a three-tier application designed for building regu
 
 ### Key Features
 
+✅ **Conversational Memory** - Multi-turn dialogues with context awareness using LangChain  
+✅ **Hybrid RAG** - Combines PDF document retrieval with user's drawing JSON  
+✅ **Full Citations** - Returns all relevant sources with selection indicators  
+✅ **Session Management** - Maintains conversation history per user session  
+✅ **Drawing Analysis** - Analyzes building drawings when no PDF context available  
 ✅ JWT authentication with secure password hashing  
 ✅ Session-based drawing JSON storage  
 ✅ PDF document indexing with semantic search  

@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from opensearchpy import OpenSearch
-import openai
+from openai import OpenAI
 
 from config.config import Config
 
@@ -44,8 +44,8 @@ class LLMInferenceService:
         self.client = opensearch_client
         self.logger = logger
         
-        # Initialize OpenAI client
-        openai.api_key = config.llm_api_key
+        # Initialize OpenAI client (new API v1.x)
+        self.openai_client = OpenAI(api_key=config.llm_api_key)
         self.model_name = config.llm_model
         self.logger.info(f"📋 Initialized OpenAI client with model: {self.model_name}")
     
@@ -97,14 +97,14 @@ class LLMInferenceService:
             ]
             
             self.logger.info("⏳ Calling OpenAI API...")
-            response = openai.ChatCompletion.create(
+            response = self.openai_client.chat.completions.create(
                 model=self.model_name,
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens
             )
             
-            # Extract text from response
+            # Extract text from response (new API structure)
             text = response.choices[0].message.content.strip()
             
             # Log the exact output - CLEAR AND VISIBLE
@@ -119,26 +119,40 @@ class LLMInferenceService:
         except Exception as e:
             self.logger.error(f"❌ OpenAI API call failed: {str(e)}")
             raise
-def generate_with_context(
-    self,
-    query: str,
-    document_context: str,
-    drawing_objects_json: str,
-    system_prompt: Optional[str] = None,
-    temperature: Optional[float] = None,
-    max_tokens: Optional[int] = None
-) -> str:
+    
+    def generate_with_context(
+        self,
+        query: str,
+        document_context: str,
+        drawing_objects_json: str,
+        system_prompt: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None
+    ) -> str:
+        """
+        Generate text with document and drawing context.
+        
+        Args:
+            query: User question
+            document_context: Persistent document knowledge
+            drawing_objects_json: Session-specific drawing data
+            system_prompt: Optional system prompt override
+            temperature: Optional temperature override
+            max_tokens: Optional max_tokens override
+            
+        Returns:
+            Generated text
+        """
+        if system_prompt is None:
+            system_prompt = (
+                "You are an AI agent that answers questions by combining "
+                "persistent document knowledge with session-specific drawing data. "
+                "You must always consider the drawing objects when provided. "
+                "Reason internally step by step, but do not reveal your chain-of-thought. "
+                "Provide a clear answer with justification."
+            )
 
-    if system_prompt is None:
-        system_prompt = (
-            "You are an AI agent that answers questions by combining "
-            "persistent document knowledge with session-specific drawing data. "
-            "You must always consider the drawing objects when provided. "
-            "Reason internally step by step, but do not reveal your chain-of-thought. "
-            "Provide a clear answer with justification."
-        )
-
-    prompt = f"""
+        prompt = f"""
 --- PERSISTENT DOCUMENT CONTEXT ---
 {document_context}
 
@@ -157,12 +171,12 @@ INSTRUCTIONS:
 FINAL ANSWER:
 """
 
-    return self.generate(
-        prompt=prompt,
-        system_prompt=system_prompt,
-        temperature=temperature,
-        max_tokens=max_tokens
-    )
+        return self.generate(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
 
     
     def generate_json(

@@ -21,7 +21,7 @@ RUN python -c "import nltk; nltk.download('stopwords', quiet=True)"
 COPY . .
 
 # Create data directory for PDFs
-RUN mkdir -p /app/data/pdfs /app/data/transcripts
+RUN mkdir -p /app/data/pdfs
 
 # Expose port
 EXPOSE 8001
