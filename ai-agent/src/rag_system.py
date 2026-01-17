@@ -19,7 +19,6 @@ from .retrieval.query_processor import QueryProcessor
 from .retrieval.retrieval_engine import RetrievalEngine
 from .retrieval.response_generator import ResponseGenerator
 from .llm_inference import LLMInferenceService
-from .conversation_manager import ConversationManager
 from config.knowledge_summary import KnowledgeSummaryGenerator
 
 
@@ -97,9 +96,6 @@ class RAGSystem:
             llm_service=self.llm_service
         )
         
-        # Initialize conversation manager
-        self.conversation_manager = ConversationManager(logger=self.logger)
-        
         self.logger.info("RAG System initialized successfully")
     
     def _setup_logger(self) -> logging.Logger:
@@ -167,16 +163,6 @@ class RAGSystem:
             self.logger.info(f"Session ID provided: {session_id}")
         
         try:
-            # Step 0: Get conversation history if session_id provided
-            conversation_history = None
-            if session_id:
-                conversation_history = self.conversation_manager.get_formatted_history(
-                    session_id=session_id,
-                    last_n=3  # Include last 3 exchanges
-                )
-                if conversation_history:
-                    self.logger.info(f"📜 Including conversation history ({len(conversation_history)} chars)")
-            
             # Step 1: Process and embed the query
             self.logger.info("Step 1: Processing query")
             query_embedding = self.query_processor.process_query(question)
@@ -185,14 +171,13 @@ class RAGSystem:
             self.logger.info("Step 2: Retrieving relevant PDF content")
             retrieval_result = self.retrieval_engine.retrieve(query_embedding, question)
             
-            # Step 3: Generate response with LLM-based answer (including drawing JSON, timestamp, and conversation history)
+            # Step 3: Generate response with LLM-based answer (including drawing JSON and timestamp)
             self.logger.info("Step 3: Generating response")
             response = self.response_generator.generate_response(
                 query=question,
                 result=retrieval_result,
                 drawing_json=drawing_json,
-                drawing_updated_at=drawing_updated_at,
-                conversation_history=conversation_history
+                drawing_updated_at=drawing_updated_at
             )
             
             self.logger.info(f"Successfully generated {response.answer_type} response")

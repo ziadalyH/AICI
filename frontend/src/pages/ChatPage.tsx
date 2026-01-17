@@ -23,10 +23,6 @@ function ChatPage() {
     };
   };
 
-  const handleClearHistory = async () => {
-    await apiClient.clearConversationHistory();
-  };
-
   const handleObjectListUpdate = async (objects: any[]) => {
     setIsObjectListLoading(true);
     setObjectListError(null);
@@ -70,7 +66,6 @@ function ChatPage() {
             <div className="chat-column">
               <ChatInterface 
                 onSendMessage={handleSendMessage}
-                onClearHistory={handleClearHistory}
               />
             </div>
             <div className="sidebar-column">

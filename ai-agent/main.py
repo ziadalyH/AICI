@@ -290,29 +290,11 @@ async def process_query(request: QueryRequest):
                 sources = [source]
             
             drawing_context_used = bool(request.drawing_json)
-            
-            # Save to conversation history if session_id provided
-            if request.session_id:
-                rag_system.conversation_manager.add_exchange(
-                    session_id=request.session_id,
-                    question=request.question,
-                    answer=answer
-                )
-                logger.info(f"💾 Saved exchange to conversation history (session: {request.session_id})")
         elif isinstance(result, NoAnswerResponse):
             answer = result.message
             answer_type = "no_answer"
             sources = None
             drawing_context_used = False
-            
-            # Still save to conversation history if session_id provided
-            if request.session_id:
-                rag_system.conversation_manager.add_exchange(
-                    session_id=request.session_id,
-                    question=request.question,
-                    answer=answer
-                )
-                logger.info(f"💾 Saved no-answer exchange to conversation history (session: {request.session_id})")
         else:
             raise ValueError(f"Unexpected result type: {type(result)}")
         
@@ -350,87 +332,6 @@ async def process_query(request: QueryRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to process query: An unexpected error occurred"
-        )
-
-
-@app.post("/api/agent/clear-history")
-async def clear_history(session_id: str):
-    """
-    Clear conversation history for a session.
-    
-    Args:
-        session_id: Session ID to clear history for
-        
-    Returns:
-        Success message
-        
-    Raises:
-        HTTPException: If RAG system is not initialized
-    """
-    if rag_system is None:
-        logger.error("Clear history attempted but RAG system not initialized")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="AI Agent service temporarily unavailable"
-        )
-    
-    try:
-        cleared = rag_system.conversation_manager.clear_session(session_id)
-        
-        if cleared:
-            logger.info(f"🗑️  Cleared conversation history for session: {session_id}")
-            return {
-                "success": True,
-                "message": f"Conversation history cleared for session {session_id}"
-            }
-        else:
-            logger.warning(f"Attempted to clear non-existent session: {session_id}")
-            return {
-                "success": True,
-                "message": "Session not found or already cleared"
-            }
-    except Exception as e:
-        logger.error(f"Error clearing history: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to clear conversation history"
-        )
-
-
-@app.get("/api/agent/session-info/{session_id}")
-async def get_session_info(session_id: str):
-    """
-    Get information about a conversation session.
-    
-    Args:
-        session_id: Session ID to get info for
-        
-    Returns:
-        Session information including message count
-        
-    Raises:
-        HTTPException: If RAG system is not initialized
-    """
-    if rag_system is None:
-        logger.error("Session info attempted but RAG system not initialized")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="AI Agent service temporarily unavailable"
-        )
-    
-    try:
-        message_count = rag_system.conversation_manager.get_message_count(session_id)
-        
-        return {
-            "session_id": session_id,
-            "message_count": message_count,
-            "exchange_count": message_count // 2  # Each exchange = 2 messages
-        }
-    except Exception as e:
-        logger.error(f"Error getting session info: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get session information"
         )
 
 

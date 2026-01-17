@@ -13,7 +13,6 @@ interface Message {
 
 interface ChatInterfaceProps {
   onSendMessage: (message: string) => Promise<{ answer: string; sources?: any[] }>;
-  onClearHistory: () => Promise<void>;
 }
 
 interface KnowledgeSummary {
@@ -22,7 +21,7 @@ interface KnowledgeSummary {
   suggested_questions: string[];
 }
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSendMessage, onClearHistory }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSendMessage }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -95,17 +94,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSendMessage, onClearHis
     }
   };
 
-  const handleClearHistory = async () => {
-    if (window.confirm('Are you sure you want to clear the conversation history?')) {
-      try {
-        await onClearHistory();
-        setMessages([]);
-      } catch (error: any) {
-        alert(`Failed to clear history: ${error.message}`);
-      }
-    }
-  };
-
   const handleStarterClick = (starter: string) => {
     setInput(starter);
   };
@@ -113,16 +101,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSendMessage, onClearHis
   return (
     <div className="chat-interface">
       <div className="chat-header">
-        <h3>Conversation</h3>
-        {messages.length > 0 && (
-          <button 
-            onClick={handleClearHistory} 
-            className="clear-history-button"
-            disabled={isLoading}
-          >
-            Clear History
-          </button>
-        )}
+        <h3>Q&A Assistant</h3>
       </div>
 
       <div className="messages-container">

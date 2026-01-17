@@ -49,7 +49,7 @@ class ApiClient {
       },
       (error) => {
         return Promise.reject(error);
-      }
+      },
     );
 
     // Add response interceptor to handle errors
@@ -61,7 +61,7 @@ class ApiClient {
           this.clearToken();
         }
         return Promise.reject(this.handleError(error));
-      }
+      },
     );
   }
 
@@ -103,7 +103,7 @@ class ApiClient {
         {
           username,
           password,
-        }
+        },
       );
 
       const token = response.data.token;
@@ -116,7 +116,7 @@ class ApiClient {
 
   async register(
     username: string,
-    password: string
+    password: string,
   ): Promise<RegisterResponse> {
     try {
       const response = await this.client.post<RegisterResponse>(
@@ -124,7 +124,7 @@ class ApiClient {
         {
           username,
           password,
-        }
+        },
       );
       return response.data;
     } catch (error) {
@@ -141,7 +141,7 @@ class ApiClient {
     try {
       const response = await this.client.post<UpdateObjectListResponse>(
         "/api/session/objects",
-        { objects }
+        { objects },
       );
       return response.data;
     } catch (error) {
@@ -177,17 +177,6 @@ class ApiClient {
         question,
       });
       return response.data;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  // Conversation history methods
-  async clearConversationHistory(): Promise<void> {
-    try {
-      // The backend automatically uses the user's session_id
-      // No need to pass it explicitly
-      await this.client.post("/api/agent/clear-history");
     } catch (error) {
       throw error;
     }

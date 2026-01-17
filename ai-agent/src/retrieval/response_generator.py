@@ -65,8 +65,7 @@ class ResponseGenerator:
         query: str,
         result: Union[PDFResult, List[PDFResult], None],
         drawing_json: Optional[Dict[str, Any]] = None,
-        drawing_updated_at: Optional[str] = None,
-        conversation_history: Optional[str] = None
+        drawing_updated_at: Optional[str] = None
     ) -> Union[PDFResponse, NoAnswerResponse]:
         """
         Generate structured response with LLM-generated answer from retrieval result.
@@ -76,7 +75,6 @@ class ResponseGenerator:
             result: Retrieval result (PDFResult, List of results, or None)
             drawing_json: Optional user's building drawing JSON for context
             drawing_updated_at: Optional ISO timestamp of when drawing was last updated
-            conversation_history: Optional formatted conversation history
             
         Returns:
             PDFResponse if result is PDFResult or List[PDFResult]
@@ -92,12 +90,11 @@ class ResponseGenerator:
                 (isinstance(drawing_json, dict) and len(drawing_json) > 0)
             ):
                 # Check if question is about drawing/building specs
-                drawing_keywords = ['plot', 'area', 'dimension', 'size', 'building', 'wall', 'door', 'window', 'floor', 'height', 'width', 'length', 'room', 'space', 'layout']
-                is_drawing_question = any(keyword in query.lower() for keyword in drawing_keywords)
+                is_drawing_question = self.prompt_templates.detect_drawing_question(query)
                 
                 if is_drawing_question:
                     self.logger.info("No PDF results, but question is about drawing - attempting JSON-only answer")
-                    return self._generate_json_only_response(query, drawing_json, drawing_updated_at, conversation_history)
+                    return self._generate_json_only_response(query, drawing_json, drawing_updated_at)
                 else:
                     self.logger.info("No PDF results and question is not about drawing, returning NoAnswerResponse")
                     return self._generate_no_answer_response()
@@ -115,12 +112,11 @@ class ResponseGenerator:
                     (isinstance(drawing_json, dict) and len(drawing_json) > 0)
                 ):
                     # Check if question is about drawing/building specs
-                    drawing_keywords = ['plot', 'area', 'dimension', 'size', 'building', 'wall', 'door', 'window', 'floor', 'height', 'width', 'length', 'room', 'space', 'layout']
-                    is_drawing_question = any(keyword in query.lower() for keyword in drawing_keywords)
+                    is_drawing_question = self.prompt_templates.detect_drawing_question(query)
                     
                     if is_drawing_question:
                         self.logger.info("No PDF results, but question is about drawing - attempting JSON-only answer")
-                        return self._generate_json_only_response(query, drawing_json, drawing_updated_at, conversation_history)
+                        return self._generate_json_only_response(query, drawing_json, drawing_updated_at)
                     else:
                         self.logger.info("No PDF results and question is not about drawing, returning NoAnswerResponse")
                         return self._generate_no_answer_response()
@@ -131,7 +127,7 @@ class ResponseGenerator:
             # Check if it's a list of PDFResult
             if isinstance(result[0], PDFResult):
                 self.logger.info(f"Generating PDFResponse from {len(result)} PDF results")
-                return self._generate_pdf_response_from_multiple(query, result, drawing_json, drawing_updated_at, conversation_history)
+                return self._generate_pdf_response_from_multiple(query, result, drawing_json, drawing_updated_at)
         
         # Handle single result (backward compatibility)
         elif isinstance(result, PDFResult):
@@ -139,7 +135,7 @@ class ResponseGenerator:
                 f"Generating PDFResponse for {result.pdf_filename}, "
                 f"page {result.page_number}"
             )
-            return self._generate_pdf_response_from_single(query, result, drawing_json, drawing_updated_at, conversation_history)
+            return self._generate_pdf_response_from_single(query, result, drawing_json, drawing_updated_at)
         
         else:
             self.logger.error(f"Unexpected result type: {type(result)}")
@@ -180,8 +176,7 @@ class ResponseGenerator:
         self,
         query: str,
         drawing_json: Dict[str, Any],
-        drawing_updated_at: Optional[str] = None,
-        conversation_history: Optional[str] = None
+        drawing_updated_at: Optional[str] = None
     ) -> PDFResponse:
         """
         Generate response from drawing JSON only (no PDF context).
@@ -191,7 +186,6 @@ class ResponseGenerator:
             query: User's question
             drawing_json: User's building drawing JSON
             drawing_updated_at: ISO timestamp of when drawing was last updated
-            conversation_history: Optional formatted conversation history
             
         Returns:
             PDFResponse with answer based solely on drawing JSON
@@ -206,50 +200,22 @@ class ResponseGenerator:
         drawing_context = self._format_drawing_context(drawing_json, drawing_updated_at)
         
         # Format timestamp for display (convert ISO to DD/MM/YYYY, HH:MM:SS)
-        formatted_timestamp = ""
-        if drawing_updated_at:
-            try:
-                from datetime import datetime
-                dt = datetime.fromisoformat(drawing_updated_at.replace('Z', '+00:00'))
-                formatted_timestamp = dt.strftime("%d/%m/%Y, %H:%M:%S")
-                self.logger.info(f"✅ Formatted timestamp: {formatted_timestamp}")
-            except Exception as e:
-                self.logger.error(f"❌ Failed to format timestamp: {e}")
-                formatted_timestamp = drawing_updated_at
+        formatted_timestamp = self.prompt_templates.format_timestamp(drawing_updated_at) if drawing_updated_at else ""
+        
+        if formatted_timestamp:
+            self.logger.info(f"✅ Formatted timestamp: {formatted_timestamp}")
         else:
             self.logger.warning("⚠️ No drawing_updated_at provided!")
         
         self.logger.info(f"📅 Final formatted timestamp: '{formatted_timestamp}'")
         
-        # Build prompt for JSON-only reasoning
-        system_prompt = "You are a helpful assistant that analyzes building drawings and answers questions about them. Be precise and factual. Always mention the drawing version date in your response."
-        
-        # Add conversation history if available
-        history_context = ""
-        if conversation_history:
-            history_context = f"\n\n{conversation_history}\n"
-            self.logger.info("📜 Including conversation history in JSON-only response")
-        
-        prompt = f"""You are analyzing a building drawing. Answer the user's question based ONLY on the drawing data provided below.
-{history_context}
-
-User's Building Drawing (Last updated: {formatted_timestamp}):
-{drawing_context}
-
-Raw Drawing Data (JSON):
-{str(drawing_json)[:2000]}  # Limit to prevent token overflow
-
-Question: {query}
-
-Instructions:
-- Answer based ONLY on the drawing data provided
-- CRITICAL: You MUST start your answer with: "Based on the updated drawing from {formatted_timestamp}, ..."
-- Be specific and cite exact values from the drawing
-- If the drawing data doesn't contain the information needed, say so clearly
-- Do NOT make assumptions or reference external regulations
-- If this is a follow-up question, use the conversation history for context
-
-Answer:"""
+        # Use prompt builder to create JSON-only prompt
+        prompt, system_prompt = self.prompt_builder.build_json_only_drawing(
+            query=query,
+            drawing_context=drawing_context,
+            drawing_json=drawing_json,
+            formatted_timestamp=formatted_timestamp
+        )
         
         self.logger.info(f"📝 JSON-only prompt created ({len(prompt)} chars)")
         
@@ -278,16 +244,14 @@ Answer:"""
         query: str,
         result: PDFResult,
         drawing_json: Optional[Dict[str, Any]] = None,
-        drawing_updated_at: Optional[str] = None,
-        conversation_history: Optional[str] = None
+        drawing_updated_at: Optional[str] = None
     ) -> PDFResponse:
         """Generate PDFResponse from a single PDFResult."""
         generated_answer = self.generate_answer_with_llm(
             query=query,
             context=result.source_snippet,
             drawing_json=drawing_json,
-            drawing_updated_at=drawing_updated_at,
-            conversation_history=conversation_history
+            drawing_updated_at=drawing_updated_at
         )
         
         return PDFResponse(
@@ -307,8 +271,7 @@ Answer:"""
         query: str,
         results: List[PDFResult],
         drawing_json: Optional[Dict[str, Any]] = None,
-        drawing_updated_at: Optional[str] = None,
-        conversation_history: Optional[str] = None
+        drawing_updated_at: Optional[str] = None
     ) -> Union[PDFResponse, NoAnswerResponse]:
         """
         Generate PDFResponse from multiple PDFResults.
@@ -344,8 +307,7 @@ Answer:"""
             contexts=combined_context,
             num_results=len(results),
             drawing_json=drawing_json,
-            drawing_updated_at=drawing_updated_at,
-            conversation_history=conversation_history
+            drawing_updated_at=drawing_updated_at
         )
         
         # Check if LLM refused to answer
@@ -412,8 +374,7 @@ Answer:"""
         contexts: str,
         num_results: int,
         drawing_json: Optional[Dict[str, Any]] = None,
-        drawing_updated_at: Optional[str] = None,
-        conversation_history: Optional[str] = None
+        drawing_updated_at: Optional[str] = None
     ) -> tuple[Optional[str], int]:
         """
         Use centralized LLM service to select best context and generate answer.
@@ -431,72 +392,43 @@ Answer:"""
             self.logger.info(f"📅 Drawing timestamp value: {drawing_updated_at}")
             self.logger.info(f"📅 Drawing timestamp type: {type(drawing_updated_at)}")
         
-        # Add conversation history if available
-        history_context = ""
-        if conversation_history:
-            history_context = f"\n\n{conversation_history}\n"
-            self.logger.info(f"📜 Conversation history included ({len(conversation_history)} chars)")
+        # Format timestamp for display
+        formatted_timestamp = self.prompt_templates.format_timestamp(drawing_updated_at) if drawing_updated_at else ""
         
-        # Build prompt template with conditional parts
-        building_spec_note = " and the user's building specifications" if drawing_json else ""
-        building_spec_instruction1 = "- When relevant, reference specific values from the building specifications (height, floors, area, etc.)\n" if drawing_json else ""
-        building_spec_instruction2 = "- If the regulations mention limits or requirements, compare them to the building specifications\n" if drawing_json else ""
-        
-        # Format timestamp for display (convert ISO to DD/MM/YYYY, HH:MM:SS)
-        formatted_timestamp = ""
-        if drawing_updated_at:
-            try:
-                from datetime import datetime
-                dt = datetime.fromisoformat(drawing_updated_at.replace('Z', '+00:00'))
-                formatted_timestamp = dt.strftime("%d/%m/%Y, %H:%M:%S")
-                self.logger.info(f"✅ Formatted timestamp: {formatted_timestamp}")
-            except Exception as e:
-                self.logger.error(f"❌ Failed to format timestamp: {e}")
-                formatted_timestamp = drawing_updated_at
+        if formatted_timestamp:
+            self.logger.info(f"✅ Formatted timestamp: {formatted_timestamp}")
         else:
             self.logger.warning("⚠️ No drawing_updated_at provided!")
         
-        building_spec_instruction3 = f"- IMPORTANT: ONLY if your answer uses information from the building drawing, start with: 'Based on the updated drawing from {formatted_timestamp}, ...'\n- If your answer is based solely on the PDF documents, do NOT mention the drawing timestamp\n" if drawing_json and formatted_timestamp else ""
-        history_instruction = "- If this is a follow-up question, use the conversation history for context\n" if conversation_history else ""
+        # Detect question types
+        is_compliance_question = self.prompt_templates.detect_compliance_question(query)
+        
+        # Build conditional instructions
+        has_drawing = bool(drawing_json)
+        
+        building_spec_note = self.prompt_templates.get_building_spec_note(has_drawing)
+        building_spec_instruction1 = self.prompt_templates.get_building_spec_instruction1(has_drawing)
+        building_spec_instruction2 = self.prompt_templates.get_building_spec_instruction2(has_drawing)
+        building_spec_instruction3 = self.prompt_templates.get_building_spec_instruction3(has_drawing, formatted_timestamp)
+        compliance_instruction = self.prompt_templates.get_compliance_instruction(is_compliance_question, has_drawing, formatted_timestamp)
         
         self.logger.info(f"🔍 Building spec instruction 3: '{building_spec_instruction3}'")
         
-        # Detect compliance questions and adjust instructions
-        is_compliance_question = any(word in query.lower() for word in ['comply', 'compliance', 'permitted development', 'allowed', 'legal'])
+        # Format optional sections
+        drawing_section = self.prompt_templates.format_drawing_context_section(drawing_context)
         
-        compliance_instruction = ""
-        if is_compliance_question and drawing_json:
-            compliance_instruction = """
-SPECIAL INSTRUCTIONS FOR COMPLIANCE QUESTIONS:
-- Even if contexts are fragmented, synthesize the information available
-- List specific rules mentioned in the contexts
-- Compare building specs against those specific rules
-- If you can check ANY rules (even partially), provide that information
-- Format: "Based on the available regulations and your drawing from {formatted_timestamp}:
-  ✅ [Rules that appear to be met]
-  ⚠️ [Rules that need checking or may not be met]
-  ℹ️ [Additional rules that apply but need more information]"
-- Do NOT refuse to answer if you have ANY relevant rule information
-"""
-        
-        prompt = f"""You are given multiple context snippets from building regulations documents. Your task is to:
-1. Identify which context (if any) best answers the question
-2. Generate a concise answer based on that context{building_spec_note}
-
-IMPORTANT: If none of the contexts contain information to answer the question, respond with "I cannot answer this question based on the provided context."
-{compliance_instruction}
-{history_context}
-{contexts}
-{drawing_context}
-
-Question: {query}
-
-Instructions:
-- First, identify the best context number (1-{num_results}) that answers the question
-- Then provide your answer based on that context{building_spec_note}
-{building_spec_instruction1}{building_spec_instruction2}{building_spec_instruction3}{history_instruction}- Format: Start with "[Using Context X]" then provide the answer
-
-Answer:"""
+        # Build prompt using template
+        prompt = self.prompt_templates.PDF_MULTIPLE_CONTEXTS.format(
+            contexts=contexts,
+            drawing_context=drawing_section,
+            query=query,
+            num_contexts=num_results,
+            building_spec_note=building_spec_note,
+            building_spec_instruction1=building_spec_instruction1,
+            building_spec_instruction2=building_spec_instruction2,
+            building_spec_instruction3=building_spec_instruction3,
+            compliance_instruction=compliance_instruction
+        )
         
         try:
             answer = self.llm_service.generate(prompt)
@@ -546,8 +478,7 @@ Answer:"""
         query: str,
         context: str,
         drawing_json: Optional[Dict[str, Any]] = None,
-        drawing_updated_at: Optional[str] = None,
-        conversation_history: Optional[str] = None
+        drawing_updated_at: Optional[str] = None
     ) -> str:
         """
         Use centralized LLM service to generate natural language answer from context.
@@ -557,7 +488,6 @@ Answer:"""
             context: Retrieved context snippet
             drawing_json: Optional user's building drawing JSON
             drawing_updated_at: ISO timestamp of when drawing was last updated
-            conversation_history: Optional formatted conversation history
             
         Returns:
             Natural language answer generated by LLM
@@ -570,45 +500,16 @@ Answer:"""
             drawing_context = self._format_drawing_context(drawing_json, drawing_updated_at)
             self.logger.info(f"✅ Drawing context included ({len(drawing_context)} chars)")
         
-        # Add conversation history if available
-        history_context = ""
-        if conversation_history:
-            history_context = f"\n\n{conversation_history}\n"
-            self.logger.info(f"📜 Conversation history included ({len(conversation_history)} chars)")
+        # Format timestamp for display
+        formatted_timestamp = self.prompt_templates.format_timestamp(drawing_updated_at) if drawing_updated_at else ""
         
-        # Build enhanced prompt with drawing context
-        system_prompt = "You are a helpful assistant that answers questions about building regulations. Be concise and accurate. When referencing drawing data, always mention the drawing version date."
-        
-        # Format timestamp for display (convert ISO to DD/MM/YYYY, HH:MM:SS)
-        formatted_timestamp = ""
-        if drawing_updated_at:
-            try:
-                from datetime import datetime
-                dt = datetime.fromisoformat(drawing_updated_at.replace('Z', '+00:00'))
-                formatted_timestamp = dt.strftime("%d/%m/%Y, %H:%M:%S")
-            except:
-                formatted_timestamp = drawing_updated_at
-        
-        building_spec_note = " and the building specifications" if drawing_json else ""
-        building_spec_instruction1 = "- When relevant, reference specific values from the building specifications (height, floors, area, etc.)\n" if drawing_json else ""
-        building_spec_instruction2 = "- If the regulations mention limits or requirements, compare them to the building specifications\n" if drawing_json else ""
-        building_spec_instruction3 = f"- IMPORTANT: ONLY if your answer uses information from the building drawing, start with: 'Based on the updated drawing from {formatted_timestamp}, ...'\n- If your answer is based solely on the PDF documents, do NOT mention the drawing timestamp\n" if drawing_json and drawing_updated_at else ""
-        history_instruction = "- If this is a follow-up question, use the conversation history for context\n" if conversation_history else ""
-        
-        prompt = f"""Based on the following context from building regulations, answer the user's question concisely and accurately.
-
-IMPORTANT: If the context does not contain information to answer the question, respond with "I cannot answer this question based on the provided context."
-{history_context}
-Context from regulations: {context}
-{drawing_context}
-
-Question: {query}
-
-Instructions:
-- Provide a clear, concise answer based on the regulations context{building_spec_note}
-{building_spec_instruction1}{building_spec_instruction2}{building_spec_instruction3}{history_instruction}- Be specific and cite relevant details from the regulations
-
-Answer:"""
+        # Use prompt builder to create single context prompt
+        prompt, system_prompt = self.prompt_builder.build_pdf_single_context(
+            query=query,
+            context=context,
+            drawing_context=drawing_context,
+            formatted_timestamp=formatted_timestamp
+        )
         
         answer = self.llm_service.generate(
             prompt=prompt,
@@ -630,6 +531,14 @@ Answer:"""
         """
         if not drawing_json:
             return ""
+        
+        # Log the raw drawing JSON for debugging
+        self.logger.info("=" * 80)
+        self.logger.info("📐 DRAWING JSON RECEIVED:")
+        self.logger.info(f"Type: {type(drawing_json)}")
+        self.logger.info(f"Length: {len(drawing_json) if isinstance(drawing_json, list) else 'N/A'}")
+        self.logger.info(f"Content: {str(drawing_json)[:500]}...")
+        self.logger.info("=" * 80)
         
         timestamp_note = f" (Last updated: {drawing_updated_at})" if drawing_updated_at else ""
         context_parts = [f"\n\nUser's Building Drawing{timestamp_note}:"]
@@ -666,6 +575,27 @@ Answer:"""
                 
                 context_parts.append(f"- Plot Dimensions: {width_m}m x {height_m}m")
                 context_parts.append(f"- Plot Area: {area_m2}m²")
+            
+            # Calculate extension depth if extension and walls exist
+            walls = next((e for e in drawing_json if e.get("layer") == "Walls"), None)
+            extension = next((e for e in drawing_json if e.get("layer") == "Extension"), None)
+            
+            if walls and extension and "points" in walls and "points" in extension:
+                # Get rear wall Y coordinate (maximum Y)
+                wall_points = walls["points"]
+                wall_y_coords = [p[1] for p in wall_points]
+                rear_wall_y = max(wall_y_coords)
+                
+                # Get extension furthest point Y coordinate
+                ext_points = extension["points"]
+                ext_y_coords = [p[1] for p in ext_points]
+                extension_furthest_y = max(ext_y_coords)
+                
+                # Calculate extension depth
+                extension_depth_mm = abs(extension_furthest_y - rear_wall_y)
+                extension_depth_m = round(extension_depth_mm / 1000, 2)
+                
+                context_parts.append(f"- Extension Depth: {extension_depth_m}m (from rear wall)")
             
             # Check proximity to highway
             has_highway = any(e.get("layer") == "Highway" for e in drawing_json)
