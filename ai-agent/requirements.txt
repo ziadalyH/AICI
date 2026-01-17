@@ -6,17 +6,14 @@ pydantic-settings>=2.1.0
 
 # Hybrid RAG Core Dependencies
 opensearch-py==2.4.2          # Vector database client
-openai>=1.10.0,<2.0.0         # LLM and embeddings API (upgraded for langchain-openai)
+openai>=1.10.0,<2.0.0         # LLM and embeddings API
 numpy>=1.26.4,<2.0.0          # Numerical operations
-
-# LangChain for Agentic Workflows
-langchain>=0.1.0              # Core LangChain framework
-langchain-openai>=0.0.5       # OpenAI integration
-langchain-community>=0.0.20   # Community tools
 
 # PDF Processing
 PyMuPDF==1.23.26              # PDF text extraction
 tiktoken>=0.5.2               # Token counting (upgraded for openai 1.x)
+Pillow>=10.0.0                # Image processing for OCR
+pytesseract>=0.3.10           # OCR engine wrapper
 
 # Embeddings
 sentence-transformers         # Local embedding models

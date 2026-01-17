@@ -5,13 +5,22 @@ This module extracts all elements per page and groups them into semantic chunks:
 - Optimal chunk sizes (512-1024 tokens)
 - Title context maintained with content
 - Chunk overlap for context continuity
+- OCR extraction from embedded images
 """
 
 import logging
 from pathlib import Path
 from typing import List, Optional, Dict
+import io
 import fitz  # PyMuPDF
 import tiktoken
+
+try:
+    from PIL import Image
+    import pytesseract
+    OCR_AVAILABLE = True
+except ImportError:
+    OCR_AVAILABLE = False
 
 from ..models import PDFParagraph
 from config.config import Config
@@ -49,6 +58,15 @@ class PDFIngester:
         
         # Paragraph extraction settings
         self.min_paragraph_length = 20  # characters (very permissive)
+        
+        # OCR settings
+        self.enable_ocr = OCR_AVAILABLE
+        self.ocr_languages = "eng+deu"  # English and German
+        
+        if self.enable_ocr:
+            self.logger.info("✅ OCR enabled (PIL + pytesseract available)")
+        else:
+            self.logger.warning("⚠️ OCR disabled (PIL or pytesseract not available)")
         
         # Initialize tokenizer for accurate token counting
         try:
@@ -115,9 +133,10 @@ class PDFIngester:
         This method:
         1. Extracts text blocks with font information using PyMuPDF
         2. Detects titles based on font size
-        3. Creates semantic chunks (512-1024 tokens)
-        4. Preserves title hierarchy
-        5. Adds overlap between chunks
+        3. Extracts images and performs OCR
+        4. Creates semantic chunks (512-1024 tokens)
+        5. Preserves title hierarchy
+        6. Adds overlap between chunks
         
         Args:
             file_path: Path to the PDF file
@@ -136,6 +155,7 @@ class PDFIngester:
             
             # Process each page and create semantic chunks
             total_chunks_created = 0
+            total_image_chunks = 0
             pages_with_no_chunks = []
             
             for page_num in range(len(doc)):
@@ -144,11 +164,25 @@ class PDFIngester:
                 # Extract text blocks with font information
                 blocks = self._extract_blocks_from_page(page)
                 
-                if not blocks:
+                # Extract images and perform OCR
+                image_chunks = []
+                if self.enable_ocr:
+                    image_chunks = self._extract_images_from_page(
+                        doc, 
+                        page_num, 
+                        file_path.name
+                    )
+                    if image_chunks:
+                        total_image_chunks += len(image_chunks)
+                        self.logger.debug(
+                            f"Page {page_num + 1}: Extracted {len(image_chunks)} image chunks via OCR"
+                        )
+                
+                if not blocks and not image_chunks:
                     pages_with_no_chunks.append(page_num + 1)
                     continue
                 
-                # Create semantic chunks from this page (paragraph index resets per page)
+                # Create semantic chunks from text blocks (paragraph index resets per page)
                 # Note: page_num is 0-indexed (PyMuPDF), we convert to 1-indexed for storage
                 page_chunks = self._create_semantic_chunks(
                     file_path.name,
@@ -157,9 +191,13 @@ class PDFIngester:
                     start_index=0  # Reset to 0 for each page
                 )
                 
+                # Add image chunks after text chunks
+                page_chunks.extend(image_chunks)
+                
                 if page_chunks:
                     self.logger.debug(
-                        f"Page {page_num + 1}: Created {len(page_chunks)} chunks from {len(blocks)} blocks"
+                        f"Page {page_num + 1}: Created {len(page_chunks)} total chunks "
+                        f"({len(page_chunks) - len(image_chunks)} text, {len(image_chunks)} images)"
                     )
                 
                 if not page_chunks:
@@ -172,7 +210,7 @@ class PDFIngester:
                 if (page_num + 1) % 50 == 0:
                     self.logger.info(
                         f"Progress: Page {page_num + 1}/{len(doc)} - "
-                        f"Created {total_chunks_created} chunks so far"
+                        f"Created {total_chunks_created} chunks so far ({total_image_chunks} from images)"
                     )
             
             doc.close()
@@ -193,6 +231,12 @@ class PDFIngester:
                 
                 self.logger.info(
                     f"Successfully created {len(paragraphs)} semantic chunks from {file_path.name}"
+                )
+                self.logger.info(
+                    f"  Text chunks: {len(paragraphs) - total_image_chunks}"
+                )
+                self.logger.info(
+                    f"  Image chunks (OCR): {total_image_chunks}"
                 )
                 self.logger.info(
                     f"  Average chunk size: {avg_tokens:.0f} tokens"
@@ -445,4 +489,87 @@ class PDFIngester:
                 break
         
         return ' '.join(overlap_parts)
+    
+    def _extract_images_from_page(
+        self, 
+        pdf_doc, 
+        page_number: int, 
+        pdf_filename: str
+    ) -> List[PDFParagraph]:
+        """
+        Extract all images from a given page in the PDF and perform OCR on each one.
+        
+        Creates a separate chunk for each image with OCR text.
+        
+        Args:
+            pdf_doc: PyMuPDF document object
+            page_number: Page number (0-indexed)
+            pdf_filename: Name of the PDF file
+            
+        Returns:
+            List of PDFParagraph objects containing OCR text from images
+        """
+        if not self.enable_ocr:
+            return []
+        
+        image_chunks = []
+        page = pdf_doc[page_number]
+        
+        try:
+            # Get a list of all image objects on the page
+            image_list = page.get_images(full=True)
+            
+            if not image_list:
+                return []
+            
+            self.logger.debug(f"Page {page_number + 1}: Found {len(image_list)} images")
+            
+            for img_index, img_info in enumerate(image_list):
+                try:
+                    xref = img_info[0]
+                    
+                    # Extract image data based on its cross-reference (xref)
+                    base_image = pdf_doc.extract_image(xref)
+                    img_bytes = base_image.get("image")
+                    
+                    if not img_bytes:
+                        continue
+                    
+                    # Convert bytes to a PIL Image object
+                    img = Image.open(io.BytesIO(img_bytes))
+                    
+                    # Perform OCR on the image
+                    ocr_text = pytesseract.image_to_string(img, lang=self.ocr_languages)
+                    
+                    if ocr_text.strip():
+                        # Create a chunk for this image
+                        # Use "Image N" as the title/metadata instead of paragraph index
+                        image_chunk = PDFParagraph(
+                            pdf_filename=pdf_filename,
+                            page_number=page_number + 1,  # Convert to 1-indexed
+                            paragraph_index=img_index,  # Use image index
+                            text=ocr_text.strip(),
+                            title=f"Image {img_index + 1}"  # Metadata: "Image 1", "Image 2", etc.
+                        )
+                        
+                        image_chunks.append(image_chunk)
+                        
+                        self.logger.debug(
+                            f"Page {page_number + 1}, Image {img_index + 1}: "
+                            f"Extracted {len(ocr_text.strip())} characters via OCR"
+                        )
+                
+                except Exception as e:
+                    self.logger.warning(
+                        f"Failed to extract/OCR image {img_index + 1} on page {page_number + 1}: {e}"
+                    )
+                    continue
+        
+        except Exception as e:
+            self.logger.error(
+                f"Image extraction/OCR failed on page {page_number + 1}: {e}"
+            )
+            return []
+        
+        return image_chunks
 

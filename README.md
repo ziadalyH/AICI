@@ -2,20 +2,36 @@
 
 A production-ready question-answering system that combines document knowledge with drawing/session data for intelligent building regulation queries. Built with FastAPI, React, OpenSearch, and OpenAI.
 
-> **🚀 Quick Start:** See [SETUP_GUIDE.md](SETUP_GUIDE.md) for step-by-step installation instructions.
+## 🚀 Quick Start
 
-## Table of Contents
+```bash
+# 1. Configure environment
+cp .env.example .env
+# Edit .env and add your OPENAI_API_KEY
+
+# 2. Start all services
+docker-compose up --build
+
+# 3. Index PDFs (place PDFs in ai-agent/data/pdfs/)
+docker exec hybrid-rag-ai-agent python index_pdfs.py
+
+# 4. Access the application
+# Frontend: http://localhost
+# Backend API: http://localhost:8000/docs
+# AI Agent API: http://localhost:8001/docs
+```
+
+## 📋 Table of Contents
 
 - [Overview](#overview)
 - [Architecture](#architecture)
 - [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
+- [Installation](#installation)
 - [Component Documentation](#component-documentation)
-- [API Documentation](#api-documentation)
-- [Usage Examples](#usage-examples)
-- [New Feature: Adjusted JSON Generation](#new-feature-adjusted-json-generation)
+- [Features](#features)
 - [Configuration](#configuration)
 - [Troubleshooting](#troubleshooting)
+- [Project Structure](#project-structure)
 
 ## Overview
 
@@ -33,38 +49,18 @@ The Hybrid RAG Q&A System is a three-tier application designed for building regu
    - MongoDB session storage for drawing data
    - Request routing and service coordination
 
-3. **AI Agent Service (FastAPI + Explaino RAG)** - Port 8001
+3. **AI Agent Service (FastAPI + RAG)** - Port 8001
    - OpenSearch vector database for document embeddings
    - Hybrid RAG pipeline combining PDFs with drawing context
    - OpenAI GPT-4o-mini for answer generation
+   - OCR image extraction from PDFs
 
 4. **Infrastructure Services**
    - **OpenSearch** (Port 9200) - Vector database with ML plugins
    - **OpenSearch Dashboards** (Port 5601) - Index management UI
    - **MongoDB** (Port 27017) - User and session data storage
 
-### Key Features
-
-✅ **Conversational Memory** - Multi-turn dialogues with context awareness using LangChain  
-✅ **Hybrid RAG** - Combines PDF document retrieval with user's drawing JSON  
-✅ **Full Citations** - Returns all relevant sources with selection indicators  
-✅ **Session Management** - Maintains conversation history per user session  
-✅ **Drawing Analysis** - Analyzes building drawings when no PDF context available  
-✅ **🆕 Adjusted JSON Generation** - LLM provides corrected, compliant JSON for non-compliant drawings  
-✅ JWT authentication with secure password hashing  
-✅ Session-based drawing JSON storage  
-✅ PDF document indexing with semantic search  
-✅ Hybrid RAG combining documents + drawing context  
-✅ Multi-source answer generation with citations  
-✅ Docker containerization for easy deployment  
-✅ Customizable embedding models  
-✅ Health checks and error handling
-
-> **🆕 NEW FEATURE:** The LLM can now generate adjusted, compliant JSON for your drawings! See [ADJUSTED_JSON_FEATURE.md](ADJUSTED_JSON_FEATURE.md) for details.
-
 ## Architecture
-
-### System Architecture Diagram
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -91,11 +87,12 @@ The Hybrid RAG Q&A System is a three-tier application designed for building regu
            ▼                                  ▼
 ┌──────────────────────┐      ┌──────────────────────────────────┐
 │   MongoDB Database   │      │   AI Agent Service (FastAPI)     │
-│  - User accounts     │      │  - Explaino RAG Pipeline         │
+│  - User accounts     │      │  - RAG Pipeline                  │
 │  - Session data      │      │  - Query Preprocessing           │
 │  - Drawing JSON      │      │  - Hybrid Retrieval              │
-│    Port: 27017       │      │         Port: 8001               │
-└──────────────────────┘      └──────────┬───────────────────────┘
+│    Port: 27017       │      │  - OCR Image Extraction          │
+└──────────────────────┘      │         Port: 8001               │
+                              └──────────┬───────────────────────┘
                                          │
                     ┌────────────────────┼────────────────────┐
                     │ OpenSearch API     │ OpenAI API         │
@@ -104,31 +101,8 @@ The Hybrid RAG Q&A System is a three-tier application designed for building regu
          │    OpenSearch    │  │   OpenAI GPT-4o-mini     │
          │  - Vector Index  │  │  - Answer Generation     │
          │  - Embeddings    │  │  - Context Synthesis     │
-         │   Port: 9200     │  └──────────────────────────┘
-         └──────────────────┘
-```
-
-### Data Flow
-
-**Query Processing Flow:**
-
-```
-User Question → Frontend (+ JWT) → Backend
-                                      ↓
-                            Retrieve Drawing JSON from MongoDB
-                                      ↓
-                            Forward to AI Agent (Question + Drawing)
-                                      ↓
-                            AI Agent Processing:
-                            1. Preprocess query (stopwords, etc.)
-                            2. Generate embeddings
-                            3. Search OpenSearch vector DB
-                            4. Retrieve relevant PDF chunks
-                            5. Combine PDFs + Drawing JSON
-                            6. Send to OpenAI GPT-4o-mini
-                            7. Generate answer with sources
-                                      ↓
-                            Backend → Frontend → User
+         │   Port: 9200     │  │  - JSON Adjustment       │
+         └──────────────────┘  └──────────────────────────┘
 ```
 
 ## Prerequisites
@@ -138,359 +112,124 @@ User Question → Frontend (+ JWT) → Backend
 - **Docker Engine** 20.10+
 - **Docker Compose** 2.0+
 - **OpenAI API Key** (required) - [Get one here](https://platform.openai.com/api-keys)
-- **8GB RAM minimum** (for OpenSearch)
+- **8GB RAM minimum** (for OpenSearch and embedding models)
 
 ### For Local Development
 
 - **Python 3.9+** (3.11 recommended)
 - **Node.js 18+** and npm
-- **OpenSearch 2.11+** (or Docker)
-- **MongoDB 7.0+** (or Docker)
+- **OpenSearch 2.11+**
+- **MongoDB 7.0+**
 - **OpenAI API Key** (required)
 
-## Quick Start
+## Installation
 
-### Step 1: Configure Environment Variables
-
-**Copy the example environment file:**
+### Step 1: Configure Environment
 
 ```bash
 cd AICI
 cp .env.example .env
 ```
 
-**Edit `.env` and add your OpenAI API key:**
+Edit `.env` and add your OpenAI API key:
 
 ```bash
-# REQUIRED: Add your OpenAI API key
+# REQUIRED
 OPENAI_API_KEY=sk-your-actual-api-key-here
-```
 
-**Optional: Customize embedding model**
-
-The default embedding model is `sentence-transformers/all-mpnet-base-v2` (768 dimensions). You can change it in `.env`:
-
-```bash
-# Popular options:
-# - all-mpnet-base-v2 (768 dim, best quality) - DEFAULT
-# - all-MiniLM-L6-v2 (384 dim, faster, smaller)
-# - paraphrase-multilingual-mpnet-base-v2 (768 dim, multilingual)
-
+# Optional: Customize embedding model
 EMBEDDING_MODEL=sentence-transformers/all-mpnet-base-v2
 EMBEDDING_DIMENSION=768
 ```
 
-⚠️ **Important:** If you change the embedding model:
-
-1. Update `EMBEDDING_DIMENSION` to match the model's output dimension
-2. Rebuild the index after starting services (see Step 3)
-
-### Step 2: Start Services with Docker
+### Step 2: Start Services
 
 ```bash
 docker-compose up --build
 ```
 
-This starts all services:
+Wait for all services to start (2-3 minutes for first run).
 
-- **OpenSearch** (vector database) - Port 9200
-- **OpenSearch Dashboards** - Port 5601
-- **MongoDB** (user/session storage) - Port 27017
-- **AI Agent Service** - Port 8001
-- **Backend API** - Port 8000
-- **Frontend** - Port 80
-
-### Step 3: Index Your PDF Documents
+### Step 3: Index PDF Documents
 
 Place your PDF files in `ai-agent/data/pdfs/` and run:
 
 ```bash
-# Access the AI Agent container
-docker exec -it hybrid-rag-ai-agent bash
-
-# Run indexing
-python -m src build-index
-
-# If you changed the embedding model, force rebuild:
-python -m src build-index --force-rebuild
-
-# Exit container
-exit
+docker exec hybrid-rag-ai-agent python index_pdfs.py
 ```
 
-### Step 4: Access the Application
-
-- **Frontend**: http://localhost
-- **Backend API Docs**: http://localhost:8000/docs
-- **AI Agent API Docs**: http://localhost:8001/docs
-- **OpenSearch Dashboards**: http://localhost:5601
-
-### Verify Services
+### Step 4: Verify Installation
 
 ```bash
-# Backend
+# Check services
 curl http://localhost:8000/health
-
-# AI Agent
 curl http://localhost:8001/health
-
-# OpenSearch
 curl http://localhost:9200/_cluster/health
+
+# Access frontend
+open http://localhost
 ```
 
 ## Component Documentation
 
-For detailed information about each component, see their respective README files:
+Each service has its own detailed README:
 
-### 📘 [Frontend Documentation](frontend/README.md)
+- **[Frontend Documentation](frontend/README.md)** - React app, components, API client
+- **[Backend Documentation](backend/README.md)** - Authentication, sessions, API endpoints
+- **[AI Agent Documentation](ai-agent/README.md)** - RAG pipeline, OCR, embeddings, indexing
 
-- React component structure
-- API client configuration
-- Building and deployment
-- Development workflow
+## Features
 
-### 📗 [Backend API Documentation](backend/README.md)
+### Core Features
 
-- Authentication system
-- Session management
-- MongoDB schema
-- API endpoints
-- Testing
+✅ **Conversational Memory** - Multi-turn dialogues with context awareness  
+✅ **Hybrid RAG** - Combines PDF document retrieval with user's drawing JSON  
+✅ **Full Citations** - Returns all relevant sources with selection indicators  
+✅ **Session Management** - Maintains conversation history per user session  
+✅ **JWT Authentication** - Secure user authentication with password hashing  
+✅ **Drawing Analysis** - Analyzes building drawings when no PDF context available
 
-### 📙 [AI Agent Documentation](ai-agent/README.md)
+### Advanced Features
 
-- Explaino RAG architecture
-- Embedding model configuration
-- PDF indexing process
-- Query processing pipeline
-- OpenSearch integration
-- Troubleshooting
+✅ **Adjusted JSON Generation** - LLM provides corrected, compliant JSON for non-compliant drawings  
+✅ **OCR Image Extraction** - Automatically extracts and indexes text from images in PDFs  
+✅ **Auto Logout** - Automatic logout and redirect when JWT token expires  
+✅ **Customizable Embeddings** - Support for various sentence-transformer models  
+✅ **Docker Deployment** - Full containerization for easy deployment
 
-## API Documentation
+### How to Use Key Features
 
-### Backend API (Port 8000)
+**1. Adjusted JSON Generation**
 
-**Interactive Documentation:**
-
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-
-**Key Endpoints:**
-
-```bash
-# Authentication
-POST /api/auth/register    # Register new user
-POST /api/auth/login       # Login (returns JWT)
-GET  /api/auth/me          # Get current user
-
-# Session Management
-POST /api/session/objects  # Upload drawing JSON
-GET  /api/session/objects  # Retrieve drawing JSON
-
-# Query Processing
-POST /api/query            # Submit question
-```
-
-### AI Agent API (Port 8001)
-
-**Interactive Documentation:**
-
-- Swagger UI: http://localhost:8001/docs
-- ReDoc: http://localhost:8001/redoc
-
-**Key Endpoints:**
-
-```bash
-# Query Processing
-POST /api/agent/query      # Process hybrid RAG query
-GET  /health               # Health check with index status
-```
-
-**Example Request:**
-
-```bash
-curl -X POST "http://localhost:8001/api/agent/query" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "question": "What are height restrictions?",
-    "drawing_json": {
-      "properties": {"height": 15.5, "floors": 3}
-    },
-    "top_k": 5
-  }'
-```
-
-## Usage Examples
-
-### Example 1: Complete Workflow
-
-**1. Register and Login**
-
-```bash
-# Register
-curl -X POST "http://localhost:8000/api/auth/register" \
-  -H "Content-Type: application/json" \
-  -d '{"username": "architect", "password": "secure123"}'
-
-# Login and save token
-TOKEN=$(curl -X POST "http://localhost:8000/api/auth/login" \
-  -H "Content-Type: application/json" \
-  -d '{"username": "architect", "password": "secure123"}' \
-  | jq -r '.token')
-```
-
-**2. Upload Building Drawing**
-
-```bash
-curl -X POST "http://localhost:8000/api/session/objects" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '[
-    {
-      "type": "BUILDING",
-      "properties": {
-        "height": 15.5,
-        "floors": 3,
-        "zone": "residential"
-      }
-    }
-  ]'
-```
-
-**3. Ask Questions**
-
-```bash
-# Question about regulations
-curl -X POST "http://localhost:8000/api/query" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"question": "What are the height restrictions for residential buildings?"}'
-
-# Question about your building
-curl -X POST "http://localhost:8000/api/query" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"question": "Does my building comply with height restrictions?"}'
-```
-
-### Example 2: Drawing JSON Formats
-
-**Simple Building:**
-
-```json
-{
-  "properties": {
-    "height": 15.5,
-    "floors": 3,
-    "zone": "residential"
-  }
-}
-```
-
-**Detailed CAD Drawing:**
-
-```json
-[
-  {
-    "type": "POLYLINE",
-    "layer": "Walls",
-    "points": [
-      [0, 0],
-      [10, 0],
-      [10, 10],
-      [0, 10]
-    ],
-    "closed": true,
-    "properties": {
-      "height": 3.0,
-      "material": "concrete"
-    }
-  }
-]
-```
-
-## New Feature: Adjusted JSON Generation
-
-### 🎯 What It Does
-
-The LLM can now **generate adjusted, compliant JSON** for your building drawings. Instead of just telling you what's wrong, it provides a complete, corrected version that meets all requirements.
-
-### Quick Example
-
-**Your Question:**
+Ask the LLM to fix non-compliant drawings:
 
 ```
 "My extension is 7m deep but the limit is 6m. Can you provide an adjusted compliant JSON?"
 ```
 
-**LLM Response:**
+The LLM will provide a corrected JSON with explanations of changes made.
 
-````
-**COMPLIANCE ANALYSIS:**
-Your extension exceeds the 6m limit by 1m.
+**2. OCR Image Extraction**
 
-**ADJUSTED COMPLIANT JSON:**
-```json
-[
-  {
-    "layer": "Extension",
-    "type": "polyline",
-    "points": [
-      [4000, 32000],
-      [8000, 32000],
-      [8000, 38000],  ← Changed from 39000 to 38000
-      [4000, 38000],
-      [4000, 32000]
-    ]
-  }
-]
-````
-
-**CHANGES MADE:**
-
-- Reduced extension depth from 7m to 6m
-- Changed Y coordinates from 39000 to 38000
-
-````
-
-### How to Use
-
-1. **Upload your drawing** (even if non-compliant)
-2. **Ask for adjustments** using keywords like:
-   - "Can you provide an adjusted compliant JSON?"
-   - "Fix my drawing and give me the corrected JSON"
-   - "How can I make my extension compliant? Show me the adjusted JSON"
-3. **Copy the JSON** from the response
-4. **Paste into your drawing editor** and save
-
-### Documentation
-
-- 📘 **Quick Start:** [QUICK_START_ADJUSTED_JSON.md](QUICK_START_ADJUSTED_JSON.md)
-- 📗 **User Guide:** [USER_GUIDE_ADJUSTED_JSON.md](USER_GUIDE_ADJUSTED_JSON.md)
-- 📙 **Technical Details:** [ADJUSTED_JSON_IMPLEMENTATION.md](ADJUSTED_JSON_IMPLEMENTATION.md)
-- 📕 **Feature Overview:** [ADJUSTED_JSON_FEATURE.md](ADJUSTED_JSON_FEATURE.md)
-
-### Test It
+Images in PDFs are automatically processed during indexing. To verify:
 
 ```bash
-# Run the test script
-cd AICI
-python test_adjustment_request.py
-````
+docker exec hybrid-rag-ai-agent python check_images.py
+```
+
+See [ai-agent/README.md](ai-agent/README.md) for details.
 
 ## Configuration
 
 ### Environment Variables
 
-All configuration is done via the `.env` file. See `.env.example` for all available options.
-
-**Key Configuration Options:**
+Key configuration options in `.env`:
 
 ```bash
 # Required
 OPENAI_API_KEY=sk-your-key-here
 
-# Embedding Model (customizable)
+# Embedding Model
 EMBEDDING_MODEL=sentence-transformers/all-mpnet-base-v2
 EMBEDDING_DIMENSION=768
 
@@ -503,9 +242,7 @@ RELEVANCE_THRESHOLD=0.7
 MAX_RESULTS=5
 ```
 
-### Changing Embedding Models
-
-The system supports various sentence-transformer models:
+### Embedding Models
 
 | Model                                 | Dimension | Speed  | Quality | Use Case             |
 | ------------------------------------- | --------- | ------ | ------- | -------------------- |
@@ -513,62 +250,23 @@ The system supports various sentence-transformer models:
 | all-MiniLM-L6-v2                      | 384       | Fast   | Good    | Development/Testing  |
 | paraphrase-multilingual-mpnet-base-v2 | 768       | Medium | Best    | Multilingual         |
 
-**To change the embedding model:**
+To change the embedding model:
 
-1. Edit `.env`:
-
-   ```bash
-   EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
-   EMBEDDING_DIMENSION=384
-   ```
-
-2. Restart services:
-
-   ```bash
-   docker-compose restart ai-agent
-   ```
-
-3. Rebuild the index:
-   ```bash
-   docker exec -it hybrid-rag-ai-agent python -m src build-index --force-rebuild
-   ```
-
-### Production Recommendations
-
-1. **Change SECRET_KEY:**
-
-   ```bash
-   python -c "import secrets; print(secrets.token_urlsafe(32))"
-   ```
-
-2. **Enable OpenSearch Security:**
-
-   ```bash
-   OPENSEARCH_USE_SSL=true
-   OPENSEARCH_USERNAME=admin
-   OPENSEARCH_PASSWORD=strong_password
-   ```
-
-3. **Configure CORS** in `backend/app/__init__.py`:
-   ```python
-   allow_origins=["https://yourdomain.com"]
-   ```
+1. Edit `.env` with new model and dimension
+2. Restart services: `docker-compose restart ai-agent`
+3. Rebuild index: `docker exec hybrid-rag-ai-agent python index_pdfs.py`
 
 ## Troubleshooting
 
 ### Common Issues
 
-#### 1. "No vector index found"
-
-**Solution:**
+**1. "No vector index found"**
 
 ```bash
-docker exec -it hybrid-rag-ai-agent python -m src build-index
+docker exec hybrid-rag-ai-agent python index_pdfs.py
 ```
 
-#### 2. OpenAI API Key Error
-
-**Solution:**
+**2. OpenAI API Key Error**
 
 ```bash
 # Check .env file
@@ -578,54 +276,34 @@ cat .env | grep OPENAI_API_KEY
 docker-compose restart ai-agent
 ```
 
-#### 3. OpenSearch Connection Refused
+**3. AI Agent Container Restarting (Out of Memory)**
 
-**Solution:**
+Increase Docker Desktop memory to 8GB:
 
-```bash
-# Check OpenSearch status
-curl http://localhost:9200
+- Docker Desktop → Settings → Resources → Memory → 8GB
+- Apply & Restart
 
-# Restart OpenSearch
-docker-compose restart opensearch
-```
-
-#### 4. No Results from RAG Query
-
-**Solutions:**
-
-- Check if documents are indexed:
-
-  ```bash
-  curl http://localhost:9200/rag-pdf-index/_count
-  ```
-
-- Lower relevance threshold in `.env`:
-
-  ```bash
-  RELEVANCE_THRESHOLD=0.5
-  ```
-
-- Rebuild index:
-  ```bash
-  docker exec -it hybrid-rag-ai-agent python -m src build-index --force-rebuild
-  ```
-
-#### 5. Port Already in Use
-
-**Solution:**
+**4. Port Already in Use**
 
 ```bash
-# Find process using port
+# Find and kill process
 lsof -i :8000
-
-# Kill process
 kill -9 <PID>
 ```
 
-### Debugging Tips
+**5. No Results from RAG Query**
 
-**View Service Logs:**
+```bash
+# Check if documents are indexed
+curl http://localhost:9200/rag-pdf-index/_count
+
+# Lower relevance threshold in .env
+RELEVANCE_THRESHOLD=0.5
+```
+
+### Debugging
+
+**View Logs:**
 
 ```bash
 # All services
@@ -649,50 +327,108 @@ curl http://localhost:9200/_cluster/health
 # Count documents
 curl http://localhost:9200/rag-pdf-index/_count
 
-# View sample documents
+# View sample
 curl http://localhost:9200/rag-pdf-index/_search?size=1
 ```
 
-For more detailed troubleshooting, see the [AI Agent README](ai-agent/README.md).
+For detailed troubleshooting, see component-specific README files.
 
 ## Project Structure
 
 ```
 AICI/
-├── .env.example               # Environment template (COPY THIS!)
+├── .env.example               # Environment template
 ├── .env                       # Your configuration (create from .env.example)
 ├── docker-compose.yml         # Docker orchestration
 ├── README.md                  # This file
 │
 ├── frontend/                  # React Frontend (Port 80)
 │   ├── src/                   # React components
+│   ├── public/
 │   ├── package.json
 │   ├── Dockerfile
 │   └── README.md             # Frontend documentation
 │
 ├── backend/                   # FastAPI Backend (Port 8000)
 │   ├── app/                   # Application code
+│   ├── tests/                 # Backend tests
 │   ├── main.py
 │   ├── requirements.txt
 │   ├── Dockerfile
 │   └── README.md             # Backend documentation
 │
 └── ai-agent/                  # AI Agent Service (Port 8001)
-    ├── main.py
+    ├── src/                   # RAG pipeline
     ├── config/                # Configuration
-    ├── src/                   # Explaino RAG
+    ├── tests/                 # AI agent tests
     ├── data/
-    │   ├── pdfs/             # Place PDFs here
-    │   └── transcripts/      # Optional video transcripts
+    │   └── pdfs/             # Place PDFs here
+    ├── main.py
+    ├── index_pdfs.py         # Indexing script
+    ├── check_images.py       # Image verification script
     ├── requirements.txt
     ├── Dockerfile
     └── README.md             # AI Agent documentation
 ```
 
+## API Documentation
+
+### Backend API (Port 8000)
+
+Interactive docs: http://localhost:8000/docs
+
+**Key Endpoints:**
+
+```bash
+POST /api/auth/register    # Register new user
+POST /api/auth/login       # Login (returns JWT)
+GET  /api/auth/me          # Get current user
+POST /api/session/objects  # Upload drawing JSON
+GET  /api/session/objects  # Retrieve drawing JSON
+POST /api/query            # Submit question
+```
+
+### AI Agent API (Port 8001)
+
+Interactive docs: http://localhost:8001/docs
+
+**Key Endpoints:**
+
+```bash
+POST /api/agent/query      # Process hybrid RAG query
+GET  /health               # Health check with index status
+```
+
+## Usage Example
+
+```bash
+# 1. Register and login
+curl -X POST "http://localhost:8000/api/auth/register" \
+  -H "Content-Type: application/json" \
+  -d '{"username": "architect", "password": "secure123"}'
+
+TOKEN=$(curl -X POST "http://localhost:8000/api/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username": "architect", "password": "secure123"}' \
+  | jq -r '.token')
+
+# 2. Upload building drawing
+curl -X POST "http://localhost:8000/api/session/objects" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '[{"type": "BUILDING", "properties": {"height": 15.5, "floors": 3}}]'
+
+# 3. Ask questions
+curl -X POST "http://localhost:8000/api/query" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What are the height restrictions for residential buildings?"}'
+```
+
 ## License
+
+[Your License Here]
 
 ## Acknowledgments
 
-- Built with **FastAPI**, **React**, **OpenSearch**, and **OpenAI**
-- Implements **sentence-transformers** for local embeddings
-- Containerized with **Docker** and **Docker Compose**
+Built with **FastAPI**, **React**, **OpenSearch**, **OpenAI**, and **sentence-transformers**.

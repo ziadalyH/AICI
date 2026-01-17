@@ -29,6 +29,7 @@ interface UpdateObjectListResponse {
 
 class ApiClient {
   private client: AxiosInstance;
+  private onUnauthorized?: () => void;
 
   constructor() {
     this.client = axios.create({
@@ -57,12 +58,22 @@ class ApiClient {
       (response) => response,
       (error: AxiosError) => {
         if (error.response?.status === 401) {
-          // Token expired or invalid - clear it
+          // Token expired or invalid - clear it and trigger logout
           this.clearToken();
+
+          // Call the unauthorized callback if set (will redirect to login)
+          if (this.onUnauthorized) {
+            this.onUnauthorized();
+          }
         }
         return Promise.reject(this.handleError(error));
       },
     );
+  }
+
+  // Set callback for unauthorized responses (token expiration)
+  public setUnauthorizedCallback(callback: () => void): void {
+    this.onUnauthorized = callback;
   }
 
   private handleError(error: AxiosError): Error {

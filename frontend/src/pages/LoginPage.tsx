@@ -1,18 +1,40 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import apiClient from '../services/apiClient';
 import './AuthPage.css';
 
 function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [messageType, setMessageType] = useState<'success' | 'warning' | 'info'>('info');
   const [isLoading, setIsLoading] = useState(false);
+
+  // Check for messages from navigation state (e.g., session expiration, registration success)
+  useEffect(() => {
+    if (location.state?.message) {
+      setMessage(location.state.message);
+      setMessageType(location.state.type || 'info');
+      
+      // Clear the message from location state
+      window.history.replaceState({}, document.title);
+      
+      // Auto-clear message after 10 seconds
+      const timer = setTimeout(() => {
+        setMessage('');
+      }, 10000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [location]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setMessage('');
     setIsLoading(true);
 
     try {
@@ -33,6 +55,12 @@ function LoginPage() {
             <h1>Welcome Back</h1>
             <p className="text-muted">Sign in to continue to your workspace</p>
           </div>
+
+          {message && (
+            <div className={`alert alert-${messageType}`}>
+              {message}
+            </div>
+          )}
 
           {error && (
             <div className="alert alert-error">

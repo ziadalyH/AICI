@@ -1,4 +1,4 @@
-"""Configuration management for the RAG Chatbot Backend."""
+"""Configuration management for the RAG system."""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,7 +9,7 @@ import yaml
 
 @dataclass
 class Config:
-    """Configuration for the RAG Chatbot Backend."""
+    """Configuration for the RAG system."""
     
     # Data paths
     transcript_dir: Path
@@ -26,41 +26,12 @@ class Config:
     opensearch_pdf_index: str   # Separate index for PDFs
     opensearch_video_index: str # Separate index for videos
     
-    # LLM configuration (OpenSearch connector)
-    llm_provider: str  # openai, bedrock, cohere, azure_openai, vertexai, sagemaker, deepseek, comprehend, custom
-    llm_endpoint: Optional[str]  # Full endpoint URL (for OpenAI/custom)
-    llm_api_key: Optional[str]
+    # LLM configuration (OpenAI)
+    llm_provider: str  # Currently only "openai" is supported
+    llm_api_key: str
     llm_model: str
     llm_temperature: float
     llm_max_tokens: int
-    
-    # AWS Bedrock/SageMaker specific
-    aws_region: Optional[str]
-    aws_access_key_id: Optional[str]
-    aws_secret_access_key: Optional[str]
-    aws_session_token: Optional[str]
-    sagemaker_endpoint: Optional[str]
-    
-    # Azure OpenAI specific
-    azure_api_key: Optional[str]
-    azure_api_base: Optional[str]
-    azure_api_version: Optional[str]
-    azure_deployment_name: Optional[str]
-    
-    # Cohere specific
-    cohere_api_key: Optional[str]
-    
-    # Google VertexAI specific
-    vertexai_project: Optional[str]
-    vertexai_location: Optional[str]
-    vertexai_access_token: Optional[str]
-    
-    # DeepSeek specific
-    deepseek_api_key: Optional[str]
-    
-    # Custom headers and templates
-    llm_headers: Optional[str]  # JSON string
-    llm_request_template: Optional[str]  # JSON string
     
     # Legacy OpenAI configuration (for backward compatibility)
     openai_api_key: str
@@ -107,9 +78,6 @@ class Config:
             if config_file.exists():
                 with open(config_file, 'r') as f:
                     config_data = yaml.safe_load(f)
-            else:
-                # YAML file specified but doesn't exist - just use defaults
-                pass
         
         # Determine workspace root (for Docker: /app/workspace, for local: current dir)
         workspace_root = Path("/app/workspace") if Path("/app/workspace").exists() else Path.cwd()
@@ -123,6 +91,9 @@ class Config:
             else:
                 # Relative path - resolve from workspace root
                 return workspace_root / path
+        
+        # Get OpenAI API key (required)
+        openai_api_key = os.getenv("OPENAI_API_KEY", config_data.get("openai", {}).get("api_key", ""))
         
         # Override with environment variables (or use defaults)
         return cls(
@@ -141,44 +112,15 @@ class Config:
             opensearch_pdf_index=os.getenv("OPENSEARCH_PDF_INDEX", config_data.get("opensearch", {}).get("pdf_index", "rag-pdf-index")),
             opensearch_video_index=os.getenv("OPENSEARCH_VIDEO_INDEX", config_data.get("opensearch", {}).get("video_index", "rag-video-index")),
             
-            # LLM configuration (OpenSearch connector)
+            # LLM configuration (OpenAI only)
             llm_provider=os.getenv("LLM_PROVIDER", config_data.get("llm", {}).get("provider", "openai")),
-            llm_endpoint=os.getenv("LLM_ENDPOINT", config_data.get("llm", {}).get("endpoint")),
-            llm_api_key=os.getenv("LLM_API_KEY", os.getenv("OPENAI_API_KEY", config_data.get("llm", {}).get("api_key"))),
+            llm_api_key=os.getenv("LLM_API_KEY", openai_api_key),
             llm_model=os.getenv("LLM_MODEL", config_data.get("llm", {}).get("model", "gpt-4o-mini")),
             llm_temperature=float(os.getenv("LLM_TEMPERATURE", config_data.get("llm", {}).get("temperature", 0.3))),
             llm_max_tokens=int(os.getenv("LLM_MAX_TOKENS", config_data.get("llm", {}).get("max_tokens", 500))),
             
-            # AWS Bedrock/SageMaker
-            aws_region=os.getenv("AWS_REGION", config_data.get("aws", {}).get("region")),
-            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID", config_data.get("aws", {}).get("access_key_id")),
-            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", config_data.get("aws", {}).get("secret_access_key")),
-            aws_session_token=os.getenv("AWS_SESSION_TOKEN", config_data.get("aws", {}).get("session_token")),
-            sagemaker_endpoint=os.getenv("SAGEMAKER_ENDPOINT", config_data.get("aws", {}).get("sagemaker_endpoint")),
-            
-            # Azure OpenAI
-            azure_api_key=os.getenv("AZURE_API_KEY", config_data.get("azure", {}).get("api_key")),
-            azure_api_base=os.getenv("AZURE_API_BASE", config_data.get("azure", {}).get("api_base")),
-            azure_api_version=os.getenv("AZURE_API_VERSION", config_data.get("azure", {}).get("api_version", "2023-05-15")),
-            azure_deployment_name=os.getenv("AZURE_DEPLOYMENT_NAME", config_data.get("azure", {}).get("deployment_name")),
-            
-            # Cohere
-            cohere_api_key=os.getenv("COHERE_API_KEY", config_data.get("cohere", {}).get("api_key")),
-            
-            # Google VertexAI
-            vertexai_project=os.getenv("VERTEXAI_PROJECT", config_data.get("vertexai", {}).get("project")),
-            vertexai_location=os.getenv("VERTEXAI_LOCATION", config_data.get("vertexai", {}).get("location", "us-central1")),
-            vertexai_access_token=os.getenv("VERTEXAI_ACCESS_TOKEN", config_data.get("vertexai", {}).get("access_token")),
-            
-            # DeepSeek
-            deepseek_api_key=os.getenv("DEEPSEEK_API_KEY", config_data.get("deepseek", {}).get("api_key")),
-            
-            # Custom headers and templates
-            llm_headers=os.getenv("LLM_HEADERS", config_data.get("llm", {}).get("headers")),
-            llm_request_template=os.getenv("LLM_REQUEST_TEMPLATE", config_data.get("llm", {}).get("request_template")),
-            
             # Legacy OpenAI configuration (backward compatibility)
-            openai_api_key=os.getenv("OPENAI_API_KEY", config_data.get("openai", {}).get("api_key", "")),
+            openai_api_key=openai_api_key,
             
             # Embedding configuration
             embedding_model=os.getenv("EMBEDDING_MODEL", config_data.get("embedding", {}).get("model", "sentence-transformers/all-MiniLM-L6-v2")),
@@ -207,47 +149,13 @@ class Config:
     
     def validate(self) -> None:
         """Validate configuration values."""
-        # Validate LLM provider
-        valid_providers = ["openai", "bedrock", "cohere", "azure_openai", "vertexai", "sagemaker", "deepseek", "comprehend", "custom"]
-        if self.llm_provider not in valid_providers:
-            raise ValueError(f"llm_provider must be one of: {valid_providers}")
+        # Validate LLM provider (only OpenAI is supported)
+        if self.llm_provider != "openai":
+            raise ValueError(f"Only 'openai' provider is supported, got: {self.llm_provider}")
         
-        # Provider-specific validation
-        if self.llm_provider == "openai":
-            if not self.llm_api_key:
-                raise ValueError("LLM_API_KEY required for OpenAI provider")
-        
-        elif self.llm_provider == "bedrock":
-            if not all([self.aws_access_key_id, self.aws_secret_access_key, self.aws_region]):
-                raise ValueError("AWS credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION) required for Bedrock")
-        
-        elif self.llm_provider == "cohere":
-            if not self.cohere_api_key:
-                raise ValueError("COHERE_API_KEY required for Cohere provider")
-        
-        elif self.llm_provider == "azure_openai":
-            if not all([self.azure_api_key, self.azure_api_base]):
-                raise ValueError("Azure credentials (AZURE_API_KEY, AZURE_API_BASE) required for Azure OpenAI")
-        
-        elif self.llm_provider == "vertexai":
-            if not all([self.vertexai_project, self.vertexai_access_token]):
-                raise ValueError("VertexAI credentials (VERTEXAI_PROJECT, VERTEXAI_ACCESS_TOKEN) required")
-        
-        elif self.llm_provider == "sagemaker":
-            if not all([self.sagemaker_endpoint, self.aws_access_key_id, self.aws_secret_access_key, self.aws_region]):
-                raise ValueError("SageMaker credentials (SAGEMAKER_ENDPOINT, AWS credentials) required")
-        
-        elif self.llm_provider == "deepseek":
-            if not self.deepseek_api_key:
-                raise ValueError("DEEPSEEK_API_KEY required for DeepSeek provider")
-        
-        elif self.llm_provider == "comprehend":
-            if not all([self.aws_access_key_id, self.aws_secret_access_key, self.aws_region]):
-                raise ValueError("AWS credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION) required for Comprehend")
-        
-        elif self.llm_provider == "custom":
-            if not all([self.llm_endpoint, self.llm_api_key]):
-                raise ValueError("LLM_ENDPOINT and LLM_API_KEY required for custom provider")
+        # Validate OpenAI API key
+        if not self.llm_api_key:
+            raise ValueError("OPENAI_API_KEY is required")
         
         # Validate embedding configuration
         if self.embedding_provider == "openai" and not self.openai_api_key:
