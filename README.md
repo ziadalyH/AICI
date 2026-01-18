@@ -381,7 +381,6 @@ Each service has its own detailed README:
 
 ### Core Features
 
-✅ **Conversational Memory** - Multi-turn dialogues with context awareness  
 ✅ **Hybrid RAG** - Combines PDF document retrieval with user's drawing JSON  
 ✅ **Full Citations** - Returns all relevant sources with selection indicators  
 ✅ **Session Management** - Maintains conversation history per user session  
@@ -392,9 +391,7 @@ Each service has its own detailed README:
 
 ✅ **Adjusted JSON Generation** - LLM provides corrected, compliant JSON for non-compliant drawings  
 ✅ **OCR Image Extraction** - Automatically extracts and indexes text from images in PDFs  
-✅ **Auto Logout** - Automatic logout and redirect when JWT token expires  
 ✅ **Customizable Embeddings** - Support for various sentence-transformer models  
-✅ **Docker Deployment** - Full containerization for easy deployment  
 ✅ **Multi-Step Reasoning** - Agent autonomously breaks down complex tasks  
 ✅ **Tool Use** - 5 specialized tools (retrieve, analyze, calculate, generate, verify)  
 ✅ **Self-Verification** - Agent checks and iterates on its own solutions  
@@ -606,11 +603,3 @@ curl -X POST "http://localhost:8000/api/query" \
   -H "Content-Type: application/json" \
   -d '{"question": "What are the height restrictions for residential buildings?"}'
 ```
-
-## License
-
-[Your License Here]
-
-## Acknowledgments
-
-Built with **FastAPI**, **React**, **OpenSearch**, **OpenAI**, and **sentence-transformers**.

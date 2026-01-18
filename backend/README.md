@@ -1,81 +1,55 @@
-# Backend API - Hybrid RAG Q&A System
+# Backend API
 
-## Overview
+FastAPI backend service handling authentication, session management, and coordination between frontend and AI Agent.
 
-This is the Backend API component of the Hybrid RAG Q&A System. It handles user authentication, session management, and coordination between the frontend and AI Agent service.
+## Features
 
-## Implemented Features
+- **JWT Authentication** - Secure user authentication with bcrypt password hashing
+- **Session Management** - User session tracking with MongoDB storage
+- **Drawing Storage** - Persistent storage of user's building drawings
+- **Query Routing** - Routes queries to AI Agent (standard or agentic mode)
+- **Auto Logout** - Automatic logout on JWT token expiration
 
-### Task 2: Authentication System ✓
+## Quick Start (Docker - Recommended)
 
-The following sub-tasks have been completed:
-
-#### 2.1 User Model and Database Schema ✓
-
-- **User model** with id, username, password_hash, and created_at fields
-- **SQLite database** for persistent user storage
-- **Password hashing** using bcrypt for secure password storage
-- Database initialization and connection management
-
-**Files:**
-
-- `app/models.py` - Pydantic models for User, UserCreate, UserLogin, Token, AuthResponse
-- `app/database.py` - Database class with user CRUD operations and password hashing
-
-#### 2.3 JWT Token Generation and Validation ✓
-
-- **Token generation** with configurable expiration (default: 24 hours)
-- **Token validation** and decoding with error handling
-- **Middleware** for protected routes using FastAPI dependencies
-- User authentication with username/password verification
-
-**Files:**
-
-- `app/auth.py` - JWT token functions and authentication middleware
-
-#### 2.5 Authentication API Endpoints ✓
-
-- **POST /api/auth/register** - User registration endpoint
-- **POST /api/auth/login** - User login endpoint returning JWT token
-- **GET /api/auth/me** - Protected endpoint to get current user info
-- Request/response models with validation
-
-**Files:**
-
-- `app/routes.py` - FastAPI router with authentication endpoints
-- `app/__init__.py` - Main FastAPI application with CORS configuration
-
-## Project Structure
-
-```
-backend/
-├── app/
-│   ├── __init__.py      # FastAPI application setup
-│   ├── models.py        # Pydantic data models
-│   ├── database.py      # SQLite database management
-│   ├── auth.py          # JWT authentication logic
-│   └── routes.py        # API endpoints
-├── tests/
-│   └── __init__.py
-├── requirements.txt     # Python dependencies
-├── main.py             # Server entry point
-└── users.db            # SQLite database (created at runtime)
-```
-
-## Installation
-
-1. Install dependencies:
+The Backend is part of the full system. See the main [README](../README.md) for complete setup.
 
 ```bash
-cd backend
+# From project root
+cd AICI
+docker-compose up -d backend
+```
+
+## Quick Start (Local Development)
+
+### 1. Install Dependencies
+
+```bash
 pip install -r requirements.txt
 ```
 
-## Running the Server
+### 2. Set Environment Variables
 
 ```bash
-cd backend
-python3 main.py
+export SECRET_KEY=your-secret-key-change-in-production
+export MONGODB_URL=mongodb://localhost:27017/
+export MONGODB_DB_NAME=hybrid_rag_qa
+export AI_AGENT_URL=http://localhost:8001
+```
+
+### 3. Start MongoDB
+
+```bash
+docker run -d \
+  --name mongodb \
+  -p 27017:27017 \
+  mongo:7.0
+```
+
+### 4. Start the Backend
+
+```bash
+python main.py
 ```
 
 The server will start on `http://localhost:8000`
@@ -97,12 +71,10 @@ Once the server is running, visit:
 ### Authentication
 
 - **POST /api/auth/register** - Register a new user
-
   - Request: `{"username": "string", "password": "string"}`
   - Response: `{"success": true, "message": "User registered successfully"}`
 
 - **POST /api/auth/login** - Login and get JWT token
-
   - Request: `{"username": "string", "password": "string"}`
   - Response: `{"token": "jwt_token", "token_type": "bearer"}`
 
@@ -132,34 +104,34 @@ This implementation validates the following requirements:
 - **Requirement 1.4**: JWT token authorization for authenticated requests ✓
 - **Requirement 1.5**: Invalid/expired token rejection ✓
 
+## Configuration
+
+Environment variables:
+
+- `SECRET_KEY` - JWT secret key (required, change in production)
+- `ALGORITHM` - JWT algorithm (default: HS256)
+- `ACCESS_TOKEN_EXPIRE_MINUTES` - Token expiration (default: 30)
+- `MONGODB_URL` - MongoDB connection URL (default: mongodb://mongodb:27017/)
+- `MONGODB_DB_NAME` - Database name (default: hybrid_rag_qa)
+- `AI_AGENT_URL` - AI Agent service URL (default: http://ai-agent:8001)
+
 ## Security Notes
 
 ⚠️ **Important for Production:**
 
-- Change the `SECRET_KEY` in `app/auth.py` to a secure random value
-- Store secrets in environment variables, not in code
-- Configure CORS origins properly (currently set to allow all origins)
+- Change `SECRET_KEY` to a secure random value
+- Store secrets in environment variables
+- Configure CORS origins properly (currently allows all)
 - Use HTTPS in production
-- Consider adding rate limiting for authentication endpoints
-- Implement token refresh mechanism for better security
-
-## Next Steps
-
-The following tasks are pending:
-
-- Task 2.2: Write property test for user registration (optional)
-- Task 2.4: Write property tests for authentication (optional)
-- Task 2.6: Write property test for invalid credential rejection (optional)
-- Task 3: Implement session management
-- Task 8: Implement Backend-to-AI-Agent communication
+- Consider rate limiting for authentication endpoints
+- Implement token refresh mechanism
 
 ## Dependencies
 
-- **FastAPI**: Web framework for building APIs
-- **Uvicorn**: ASGI server for running FastAPI
-- **python-jose**: JWT token encoding/decoding
-- **passlib**: Password hashing with bcrypt
-- **pydantic**: Data validation and settings management
-- **SQLite**: Embedded database for user storage
-- **pytest**: Testing framework
-- **hypothesis**: Property-based testing framework
+- **FastAPI** - Web framework
+- **Uvicorn** - ASGI server
+- **python-jose** - JWT token handling
+- **passlib** - Password hashing with bcrypt
+- **pymongo** - MongoDB driver
+- **httpx** - HTTP client for AI Agent communication
+- **pydantic** - Data validation
