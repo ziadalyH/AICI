@@ -21,6 +21,11 @@ interface QueryResponse {
   sources?: any[];
   answer_type?: string;
   drawing_context_used?: boolean;
+  knowledge_summary?: {
+    overview: string;
+    topics: string[];
+    suggested_questions: string[];
+  };
 }
 
 interface UpdateObjectListResponse {
@@ -58,11 +63,15 @@ class ApiClient {
       (response) => response,
       (error: AxiosError) => {
         if (error.response?.status === 401) {
-          // Token expired or invalid - clear it and trigger logout
+          // Only trigger unauthorized callback if user was actually logged in
+          const hadToken = this.getToken() !== null;
+
+          // Token expired or invalid - clear it
           this.clearToken();
 
-          // Call the unauthorized callback if set (will redirect to login)
-          if (this.onUnauthorized) {
+          // Call the unauthorized callback only if user was logged in
+          // (don't show "session expired" on login page)
+          if (hadToken && this.onUnauthorized) {
             this.onUnauthorized();
           }
         }
@@ -187,6 +196,21 @@ class ApiClient {
       const response = await this.client.post<QueryResponse>("/api/query", {
         question,
       });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Agentic query method (multi-step reasoning)
+  async queryAgentic(question: string): Promise<QueryResponse> {
+    try {
+      const response = await this.client.post<QueryResponse>(
+        "/api/query-agentic",
+        {
+          question,
+        },
+      );
       return response.data;
     } catch (error) {
       throw error;

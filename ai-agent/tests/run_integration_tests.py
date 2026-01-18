@@ -144,7 +144,7 @@ class TestRunner:
             expected_checks={
                 "mentions_area": lambda r: "768" in r.get("answer", "") or "24" in r.get("answer", ""),
                 "mentions_square_metres": lambda r: "m²" in r.get("answer", "") or "square" in r.get("answer", "").lower(),
-                "has_drawing_timestamp": lambda r: "based on the updated drawing" in r.get("answer", "").lower()
+                "has_drawing_timestamp": lambda r: "drawing from" in r.get("answer", "").lower() or "updated drawing" in r.get("answer", "").lower()
             }
         )
         

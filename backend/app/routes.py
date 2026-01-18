@@ -415,6 +415,139 @@ async def process_query(
         )
 
 
+@query_router.post("/query-agentic")
+async def process_query_agentic(
+    request: QueryRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Process a user query using the AI Agent in AGENTIC mode (multi-step reasoning).
+    
+    This endpoint:
+    1. Retrieves the user's session objects (drawing JSON)
+    2. Sends the question and objects to the AI Agent's agentic endpoint
+    3. Returns the AI-generated answer with reasoning steps
+    
+    Args:
+        request: QueryRequest containing the user's question
+        current_user: The authenticated user (injected by dependency)
+        
+    Returns:
+        QueryResponse with the AI-generated answer and reasoning steps
+        
+    Raises:
+        HTTPException: If session not found or AI Agent communication fails
+    """
+    from .ai_agent_client import ai_agent_client
+    
+    try:
+        # Get session for user
+        session = session_store.get_session_by_user(current_user.id)
+        
+        if not session:
+            log_warning(
+                warning_type="SESSION_NOT_FOUND",
+                message="Session not found for agentic query",
+                user_id=current_user.id
+            )
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found. Please login again."
+            )
+        
+        # Get drawing from database (permanent storage)
+        db_data = db.get_user_objects(current_user.id)
+        objects = db_data.get("objects", [])
+        drawing_updated_at = db_data.get("updated_at")
+        
+        log_info(
+            info_type="AGENTIC_QUERY_PROCESSING",
+            message=f"Processing agentic query with {len(objects)} objects from database (updated: {drawing_updated_at})",
+            user_id=current_user.id,
+            session_id=session.session_id
+        )
+        
+        # Send query to AI Agent's agentic endpoint
+        response = await ai_agent_client.query_agentic(
+            question=request.question,
+            objects=objects,
+            drawing_updated_at=drawing_updated_at.isoformat() if drawing_updated_at else None,
+            top_k=getattr(request, 'top_k', 10),
+            session_id=session.session_id
+        )
+        
+        log_info(
+            info_type="AGENTIC_QUERY_SUCCESS",
+            message="Agentic query processed successfully",
+            user_id=current_user.id
+        )
+        
+        # Return full response (answer, sources, answer_type, drawing_context_used, reasoning_steps)
+        return QueryResponse(
+            answer=response.get("answer", ""),
+            sources=response.get("sources"),
+            answer_type=response.get("answer_type", "no_answer"),
+            drawing_context_used=response.get("drawing_context_used", False)
+        )
+        
+    except ValueError as e:
+        log_error(
+            error_type="AGENTIC_QUERY_VALIDATION_ERROR",
+            message=str(e),
+            user_id=current_user.id
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except httpx.TimeoutException as e:
+        log_error(
+            error_type="AI_AGENT_TIMEOUT",
+            message="AI Agent agentic request timed out",
+            user_id=current_user.id,
+            exception=e
+        )
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="AI Agent request timed out. Agentic mode may take longer. Please try again."
+        )
+    except httpx.ConnectError as e:
+        log_error(
+            error_type="AI_AGENT_CONNECTION_ERROR",
+            message="Unable to connect to AI Agent",
+            user_id=current_user.id,
+            exception=e
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI Agent service is currently unavailable. Please try again later."
+        )
+    except httpx.HTTPStatusError as e:
+        log_error(
+            error_type="AI_AGENT_ERROR",
+            message=f"AI Agent returned error: {e.response.status_code}",
+            user_id=current_user.id,
+            exception=e
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="AI Agent returned an error. Please try again."
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        log_error(
+            error_type="AGENTIC_QUERY_ERROR",
+            message="An unexpected error occurred while processing agentic query",
+            user_id=current_user.id,
+            exception=e
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while processing your query"
+        )
+
+
 @query_router.get("/knowledge-summary")
 async def get_knowledge_summary(current_user: User = Depends(get_current_user)):
     """

@@ -50,14 +50,16 @@ class PDFIngester:
         self.logger = logger or logging.getLogger(__name__)
         self.pdf_dir = config.pdf_dir
         
-        # Chunking parameters (paragraph-level with overlap)
+        # Chunking parameters (semantic merging with overlap)
         # IMPROVED: Larger chunks for better context and complete rule descriptions
         self.target_chunk_size = 1024  # tokens per chunk (increased from 512)
         self.max_chunk_size = 1536     # tokens (increased from 768)
         self.chunk_overlap = 256       # tokens overlap (increased from 128)
+        self.min_chunk_size = 256      # tokens - minimum viable chunk size
         
         # Paragraph extraction settings
-        self.min_paragraph_length = 20  # characters (very permissive)
+        self.min_block_length = 20     # characters - filter noise blocks
+        self.merge_small_blocks = True # Merge adjacent blocks into semantic chunks
         
         # OCR settings
         self.enable_ocr = OCR_AVAILABLE
@@ -65,8 +67,12 @@ class PDFIngester:
         
         if self.enable_ocr:
             self.logger.info("✅ OCR enabled (PIL + pytesseract available)")
+            self.logger.info(f"   OCR languages: {self.ocr_languages}")
         else:
             self.logger.warning("⚠️ OCR disabled (PIL or pytesseract not available)")
+            self.logger.warning("   Images in PDFs will not be processed")
+            self.logger.warning("   Install: pip install Pillow pytesseract")
+            self.logger.warning("   System: apt-get install tesseract-ocr")
         
         # Initialize tokenizer for accurate token counting
         try:
@@ -192,7 +198,11 @@ class PDFIngester:
                 )
                 
                 # Add image chunks after text chunks
-                page_chunks.extend(image_chunks)
+                # Note: Image chunks are kept separate (not merged) as they represent distinct visual content
+                for img_chunk in image_chunks:
+                    # Adjust paragraph index to continue from text chunks
+                    img_chunk.paragraph_index = len(page_chunks)
+                    page_chunks.append(img_chunk)
                 
                 if page_chunks:
                     self.logger.debug(
@@ -324,13 +334,13 @@ class PDFIngester:
         start_index: int
     ) -> List[PDFParagraph]:
         """
-        Create chunks from page blocks - PARAGRAPH-LEVEL with sliding window.
+        Create chunks from page blocks - SEMANTIC MERGING with sliding window.
         
-        Strategy for comprehensive coverage:
-        1. Extract EVERY paragraph as individual chunks
-        2. For long paragraphs (>max_chunk_size), split with overlap
-        3. Preserve title context with each paragraph
-        4. No aggressive grouping - capture all content
+        Strategy for better context:
+        1. Merge adjacent small blocks into semantic chunks (target: 512-1024 tokens)
+        2. Preserve title context with merged content
+        3. Split oversized chunks with overlap
+        4. Ensure minimum chunk size for meaningful context
         
         Args:
             pdf_filename: Name of the PDF file
@@ -339,27 +349,20 @@ class PDFIngester:
             start_index: Starting paragraph index
             
         Returns:
-            List of PDFParagraph objects (one per paragraph or split)
+            List of PDFParagraph objects with better semantic context
         """
         chunks = []
         current_title = None
         paragraph_index = start_index
         
-        filtered_count = 0
-        processed_count = 0
-        
-        # Process each block
+        # Filter and categorize blocks
+        content_blocks = []
         for block in blocks:
             text = block["text"].strip()
             is_title = block["is_title"]
             
-            # Skip empty blocks
-            if not text:
-                continue
-            
-            # Skip very short blocks (likely noise)
-            if len(text) < self.min_paragraph_length:
-                filtered_count += 1
+            # Skip empty or very short blocks
+            if not text or len(text) < self.min_block_length:
                 continue
             
             # Handle title blocks - update current title context
@@ -368,41 +371,133 @@ class PDFIngester:
                 self.logger.debug(f"Detected title: '{text[:100]}...' (font_size={block['font_size']:.1f})")
                 continue
             
-            # Handle content blocks - each becomes its own chunk(s)
-            processed_count += 1
-            text_tokens = self._count_tokens(text)
+            # Collect content blocks for merging
+            content_blocks.append(text)
+        
+        if not content_blocks:
+            return chunks
+        
+        # Merge blocks into semantic chunks
+        if self.merge_small_blocks:
+            merged_chunks = self._merge_blocks_into_chunks(content_blocks)
+        else:
+            merged_chunks = content_blocks
+        
+        # Create PDFParagraph objects from merged chunks
+        for chunk_text in merged_chunks:
+            text_tokens = self._count_tokens(chunk_text)
             
-            # If paragraph fits in one chunk, create it directly
+            # If chunk is within size limits, use it directly
             if text_tokens <= self.max_chunk_size:
                 chunks.append(PDFParagraph(
                     pdf_filename=pdf_filename,
                     page_number=page_num,
                     paragraph_index=paragraph_index,
-                    text=text,
-                    title=current_title
+                    text=chunk_text,
+                    title=current_title,
+                    content_type="text"  # Explicitly mark as text content
                 ))
                 paragraph_index += 1
             else:
-                # Long paragraph - split with sliding window overlap
-                sub_chunks = self._split_long_paragraph(text)
+                # Oversized chunk - split with overlap
+                sub_chunks = self._split_long_paragraph(chunk_text)
                 for sub_text in sub_chunks:
                     chunks.append(PDFParagraph(
                         pdf_filename=pdf_filename,
                         page_number=page_num,
                         paragraph_index=paragraph_index,
                         text=sub_text,
-                        title=current_title
+                        title=current_title,
+                        content_type="text"  # Explicitly mark as text content
                     ))
                     paragraph_index += 1
         
-        # Log if page has very few chunks (potential issue)
-        if len(blocks) > 5 and len(chunks) == 0:
-            self.logger.warning(
-                f"Page {page_num}: {len(blocks)} blocks but 0 chunks created "
-                f"(filtered: {filtered_count}, processed: {processed_count})"
-            )
+        return chunks
+    
+    def _merge_blocks_into_chunks(self, blocks: List[str]) -> List[str]:
+        """
+        Merge adjacent blocks into semantic chunks of target size.
+        
+        Strategy:
+        - Accumulate blocks until reaching target_chunk_size
+        - Ensure minimum chunk size for context
+        - Add overlap between chunks for continuity
+        
+        Args:
+            blocks: List of text blocks to merge
+            
+        Returns:
+            List of merged chunk texts
+        """
+        if not blocks:
+            return []
+        
+        chunks = []
+        current_chunk = []
+        current_tokens = 0
+        
+        for block in blocks:
+            block_tokens = self._count_tokens(block)
+            
+            # If adding this block would exceed max size, finalize current chunk
+            if current_tokens > 0 and current_tokens + block_tokens > self.target_chunk_size:
+                # Finalize current chunk
+                chunk_text = ' '.join(current_chunk)
+                chunks.append(chunk_text)
+                
+                # Start new chunk with overlap from previous chunk
+                overlap_text = self._get_overlap_from_text(chunk_text, self.chunk_overlap)
+                if overlap_text:
+                    current_chunk = [overlap_text, block]
+                    current_tokens = self._count_tokens(overlap_text) + block_tokens
+                else:
+                    current_chunk = [block]
+                    current_tokens = block_tokens
+            else:
+                # Add block to current chunk
+                current_chunk.append(block)
+                current_tokens += block_tokens
+        
+        # Add final chunk if it exists
+        if current_chunk:
+            chunk_text = ' '.join(current_chunk)
+            # Only add if it meets minimum size (unless it's the only chunk)
+            if len(chunks) == 0 or self._count_tokens(chunk_text) >= self.min_chunk_size:
+                chunks.append(chunk_text)
+            else:
+                # Merge with previous chunk if too small
+                if chunks:
+                    chunks[-1] = chunks[-1] + ' ' + chunk_text
         
         return chunks
+    
+    def _get_overlap_from_text(self, text: str, overlap_tokens: int) -> str:
+        """
+        Extract the last N tokens from text for overlap.
+        
+        Args:
+            text: Source text
+            overlap_tokens: Number of tokens to extract
+            
+        Returns:
+            Overlap text (last N tokens)
+        """
+        if not text or overlap_tokens <= 0:
+            return ""
+        
+        if self.tokenizer:
+            tokens = self.tokenizer.encode(text)
+            if len(tokens) <= overlap_tokens:
+                return text
+            
+            overlap_tokens_list = tokens[-overlap_tokens:]
+            return self.tokenizer.decode(overlap_tokens_list)
+        else:
+            # Fallback: character-based approximation
+            overlap_chars = overlap_tokens * 4
+            if len(text) <= overlap_chars:
+                return text
+            return text[-overlap_chars:]
     
     def _split_long_paragraph(self, text: str) -> List[str]:
         """
@@ -453,42 +548,6 @@ class PDFIngester:
             start += self.target_chunk_size - self.chunk_overlap
         
         return chunks
-    
-    def _get_overlap_text(self, content_list: List[str], overlap_tokens: int) -> str:
-        """
-        Get overlap text from the end of content list.
-        
-        Args:
-            content_list: List of text segments
-            overlap_tokens: Number of tokens to overlap
-            
-        Returns:
-            Overlap text (last N tokens from content)
-        """
-        if not content_list:
-            return ""
-        
-        # Start from the end and accumulate until we have enough tokens
-        overlap_parts = []
-        token_count = 0
-        
-        for text in reversed(content_list):
-            text_tokens = self._count_tokens(text)
-            if token_count + text_tokens <= overlap_tokens:
-                overlap_parts.insert(0, text)
-                token_count += text_tokens
-            else:
-                # Take partial text to reach overlap target
-                if self.tokenizer:
-                    tokens = self.tokenizer.encode(text)
-                    remaining = overlap_tokens - token_count
-                    if remaining > 0:
-                        partial_tokens = tokens[-remaining:]
-                        partial_text = self.tokenizer.decode(partial_tokens)
-                        overlap_parts.insert(0, partial_text)
-                break
-        
-        return ' '.join(overlap_parts)
     
     def _extract_images_from_page(
         self, 
@@ -549,7 +608,8 @@ class PDFIngester:
                             page_number=page_number + 1,  # Convert to 1-indexed
                             paragraph_index=img_index,  # Use image index
                             text=ocr_text.strip(),
-                            title=f"Image {img_index + 1}"  # Metadata: "Image 1", "Image 2", etc.
+                            title=f"Image {img_index + 1}",  # Metadata: "Image 1", "Image 2", etc.
+                            content_type="image"  # Mark as image content
                         )
                         
                         image_chunks.append(image_chunk)

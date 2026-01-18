@@ -51,13 +51,14 @@ class ChunkingModule:
                 )
                 continue
 
-            # Create chunk from paragraph, preserving title
+            # Create chunk from paragraph, preserving title and content_type
             chunk = PDFChunk(
                 pdf_filename=paragraph.pdf_filename,
                 page_number=paragraph.page_number,
                 paragraph_index=paragraph.paragraph_index,
                 text=paragraph.text,
-                title=paragraph.title
+                title=paragraph.title,
+                content_type=paragraph.content_type  # Preserve content type
             )
 
             chunks.append(chunk)

@@ -163,6 +163,93 @@ class AIAgentClient:
                 response=e.response
             ) from e
     
+    async def query_agentic(
+        self,
+        question: str,
+        objects: List[Dict[str, Any]],
+        drawing_updated_at: Optional[str] = None,
+        top_k: int = 5,
+        session_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Send a query to the AI Agent service using AGENTIC mode (multi-step reasoning).
+        
+        Args:
+            question: User's natural-language question
+            objects: List of ephemeral objects for the current session
+            drawing_updated_at: ISO timestamp of when drawing was last updated
+            top_k: Number of document chunks to retrieve (default: 5)
+            session_id: Optional session ID for conversation history
+            
+        Returns:
+            Full response dictionary with answer, sources, answer_type, reasoning_steps, etc.
+            
+        Raises:
+            httpx.HTTPStatusError: If the AI Agent returns an error status
+            httpx.TimeoutException: If the request times out
+            httpx.ConnectError: If unable to connect to the AI Agent
+            Exception: For other unexpected errors
+        """
+        # Validate inputs
+        if not question or not question.strip():
+            raise ValueError("Question cannot be empty")
+        
+        # Prepare request payload
+        payload = {
+            "question": question,
+            "drawing_json": objects,
+            "drawing_updated_at": drawing_updated_at,
+            "top_k": top_k
+        }
+        
+        # Add session_id if provided
+        if session_id:
+            payload["session_id"] = session_id
+        
+        # Log the payload being sent
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"🤖 Sending to AI Agent (AGENTIC MODE): question='{question[:50]}...', drawing_json={len(objects)} objects, session_id={session_id}")
+        
+        try:
+            # Make async HTTP request to AI Agent's agentic endpoint
+            async with httpx.AsyncClient(timeout=60.0) as client:  # Longer timeout for agentic mode
+                response = await client.post(
+                    f"{self.base_url}/api/agent/query-agentic",
+                    json=payload
+                )
+                
+                # Raise exception for error status codes
+                response.raise_for_status()
+                
+                # Parse response
+                data = response.json()
+                logger.info(f"✅ Agentic query completed with {len(data.get('reasoning_steps', []))} reasoning steps")
+                return data
+                
+        except httpx.TimeoutException as e:
+            raise httpx.TimeoutException(
+                f"AI Agent agentic request timed out after 60 seconds"
+            ) from e
+        
+        except httpx.ConnectError as e:
+            raise httpx.ConnectError(
+                f"Unable to connect to AI Agent at {self.base_url}"
+            ) from e
+        
+        except httpx.HTTPStatusError as e:
+            # Extract error details from response if available
+            try:
+                error_detail = e.response.json().get("detail", str(e))
+            except Exception:
+                error_detail = str(e)
+            
+            raise httpx.HTTPStatusError(
+                message=f"AI Agent returned error: {error_detail}",
+                request=e.request,
+                response=e.response
+            ) from e
+    
     async def health_check(self) -> bool:
         """
         Check if the AI Agent service is healthy.

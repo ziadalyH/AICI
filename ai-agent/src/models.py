@@ -13,6 +13,7 @@ class PDFParagraph:
     paragraph_index: int
     text: str
     title: Optional[str] = None  # Section title/heading for this chunk
+    content_type: str = "text"  # "text" or "image" - indicates source of content
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -36,6 +37,7 @@ class PDFChunk:
     paragraph_index: int
     text: str
     title: Optional[str] = None  # Section title/heading for this chunk
+    content_type: str = "text"  # "text" or "image" - indicates source of content
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -61,6 +63,7 @@ class PDFResult:
     score: float
     document_id: str = ""
     title: Optional[str] = None  # Section title/heading for this result
+    content_type: str = "text"  # "text" or "image" - indicates source of content
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -90,6 +93,7 @@ class PDFResponse:
     title: Optional[str] = None  # Section title/heading for this response
     all_sources: Optional[List[Dict[str, Any]]] = None  # All sources considered by LLM
     selected_source_index: int = 0  # Which source was selected (0-indexed)
+    reasoning_steps: Optional[List[Dict[str, Any]]] = None  # Agentic reasoning steps
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""

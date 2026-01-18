@@ -22,7 +22,7 @@ def test_chunk_text():
     text = "This is a test document. " * 20
     
     chunks = processor.chunk_text(text, source_document="test.txt")
-    
+        
     # Should have multiple chunks
     assert len(chunks) > 1
     

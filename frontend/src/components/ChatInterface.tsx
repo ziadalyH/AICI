@@ -9,10 +9,23 @@ interface Message {
   content: string;
   sources?: any[];
   timestamp: Date;
+  knowledgeSummary?: {
+    overview: string;
+    topics: string[];
+    suggested_questions: string[];
+  };
 }
 
 interface ChatInterfaceProps {
-  onSendMessage: (message: string) => Promise<{ answer: string; sources?: any[] }>;
+  onSendMessage: (message: string) => Promise<{ 
+    answer: string; 
+    sources?: any[];
+    knowledge_summary?: {
+      overview: string;
+      topics: string[];
+      suggested_questions: string[];
+    };
+  }>;
 }
 
 interface KnowledgeSummary {
@@ -25,6 +38,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSendMessage }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isAgenticMode, setIsAgenticMode] = useState(false);
   const [knowledgeSummary, setKnowledgeSummary] = useState<KnowledgeSummary | null>(null);
   const [isLoadingSummary, setIsLoadingSummary] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -53,6 +67,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSendMessage }) => {
     loadSummary();
   }, []);
 
+  // Listen for question population events from MessageBubble
+  useEffect(() => {
+    const handlePopulateQuestion = (event: CustomEvent) => {
+      setInput(event.detail);
+    };
+
+    window.addEventListener('populateQuestion', handlePopulateQuestion as EventListener);
+    
+    return () => {
+      window.removeEventListener('populateQuestion', handlePopulateQuestion as EventListener);
+    };
+  }, []);
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -70,13 +97,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSendMessage }) => {
     setIsLoading(true);
 
     try {
-      const response = await onSendMessage(userMessage.content);
+      // Use agentic mode if toggle is enabled
+      const response = isAgenticMode 
+        ? await apiClient.queryAgentic(userMessage.content)
+        : await onSendMessage(userMessage.content);
 
       const assistantMessage: Message = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
         content: response.answer,
         sources: response.sources,
+        knowledgeSummary: response.knowledge_summary || undefined,
         timestamp: new Date(),
       };
 
@@ -102,6 +133,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSendMessage }) => {
     <div className="chat-interface">
       <div className="chat-header">
         <h3>Q&A Assistant</h3>
+        <div className="mode-toggle">
+          <label className="toggle-label">
+            <input
+              type="checkbox"
+              checked={isAgenticMode}
+              onChange={(e) => setIsAgenticMode(e.target.checked)}
+              className="toggle-checkbox"
+            />
+            <span className="toggle-slider"></span>
+            <span className="toggle-text">
+              {isAgenticMode ? '🤖 Agentic Mode' : '⚡ Standard Mode'}
+            </span>
+          </label>
+          <div className="mode-description">
+            {isAgenticMode 
+              ? 'Multi-step reasoning with tool use' 
+              : 'Fast single-shot inference'}
+          </div>
+        </div>
       </div>
 
       <div className="messages-container">
