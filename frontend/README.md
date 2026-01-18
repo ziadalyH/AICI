@@ -1,46 +1,149 @@
-# Getting Started with Create React App
+# Frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+React + TypeScript frontend for the Hybrid RAG Q&A System.
+
+## Features
+
+- **User Authentication** - Login/Register with JWT token management
+- **Drawing Editor** - JSON editor for building drawings with syntax highlighting
+- **Chat Interface** - Real-time Q&A with AI Agent
+- **AI Mode Toggle** - Switch between Standard (⚡) and Agentic (🤖) modes
+- **Source Citations** - View all retrieved sources with relevance scores
+- **Auto Logout** - Automatic logout on JWT token expiration
+
+## Quick Start (Docker - Recommended)
+
+The Frontend is part of the full system. See the main [README](../README.md) for complete setup.
+
+```bash
+# From project root
+cd AICI
+docker-compose up -d frontend
+```
+
+## Quick Start (Local Development)
+
+### 1. Install Dependencies
+
+```bash
+npm install
+```
+
+### 2. Set Environment Variables
+
+Create `.env` file:
+
+```bash
+REACT_APP_BACKEND_URL=http://localhost:8000
+```
+
+### 3. Start Development Server
+
+```bash
+npm start
+```
+
+Open [http://localhost:3000](http://localhost:3000) to view in browser.
 
 ## Available Scripts
 
-In the project directory, you can run:
-
 ### `npm start`
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+Runs the app in development mode on [http://localhost:3000](http://localhost:3000).
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+The page will reload on edits. Lint errors will show in the console.
 
 ### `npm test`
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+Launches the test runner in interactive watch mode.
 
 ### `npm run build`
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+Builds the app for production to the `build` folder.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+The build is minified and filenames include hashes. Ready to deploy!
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+## Project Structure
 
-### `npm run eject`
+```
+frontend/
+├── public/
+│   ├── index.html           # HTML template
+│   └── favicon.ico          # Favicon
+├── src/
+│   ├── components/          # React components
+│   │   ├── Login.tsx        # Login/Register page
+│   │   ├── ChatInterface.tsx # Main chat interface
+│   │   └── *.css            # Component styles
+│   ├── services/
+│   │   └── apiClient.ts     # Backend API client
+│   ├── App.tsx              # Main app component
+│   ├── App.css              # App styles
+│   └── index.tsx            # Entry point
+├── package.json             # Dependencies
+├── tsconfig.json            # TypeScript config
+├── Dockerfile               # Docker image
+└── nginx.conf               # Nginx config for production
+```
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+## Key Components
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+### Login Component
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+- User registration and login
+- JWT token storage in localStorage
+- Form validation
+- Error handling
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+### Chat Interface
+
+- Question input with submit
+- Drawing JSON editor with syntax highlighting
+- AI mode toggle (Standard vs Agentic)
+- Message history display
+- Source citations with relevance scores
+- Auto-logout on token expiration
+
+### API Client
+
+- Centralized HTTP client for backend communication
+- JWT token injection in headers
+- Error handling and token expiration detection
+- TypeScript types for all API requests/responses
+
+## Configuration
+
+Environment variables:
+
+- `REACT_APP_BACKEND_URL` - Backend API URL (default: http://localhost:8000)
+
+## Building for Production
+
+```bash
+# Build optimized production bundle
+npm run build
+
+# The build folder is ready to be deployed
+# Serve with nginx or any static file server
+```
+
+## Docker Deployment
+
+The Dockerfile uses multi-stage build:
+
+1. **Build stage** - Installs dependencies and builds React app
+2. **Production stage** - Serves static files with nginx
+
+```bash
+# Build image
+docker build -t hybrid-rag-frontend .
+
+# Run container
+docker run -p 80:80 hybrid-rag-frontend
+```
 
 ## Learn More
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
+- [React Documentation](https://reactjs.org/)
+- [TypeScript Documentation](https://www.typescriptlang.org/)
+- [Create React App Documentation](https://facebook.github.io/create-react-app/docs/getting-started)
