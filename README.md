@@ -109,6 +109,195 @@ The Hybrid RAG Q&A System is a three-tier application designed for building regu
          └──────────────────┘  └──────────────────────────┘
 ```
 
+## AI Strategy & Intelligent Fallback System
+
+The system uses a sophisticated multi-tier AI strategy with intelligent fallbacks to ensure users always get meaningful responses.
+
+### Primary AI Strategy: Hybrid RAG
+
+The core AI approach combines three information sources:
+
+1. **PDF Document Retrieval** - Vector search through indexed building regulations using OpenSearch
+2. **Drawing Context Integration** - User's building specifications from uploaded JSON drawings
+3. **Conversation History** - Multi-turn dialogue context for coherent conversations
+
+**How it works:**
+
+- User asks a question (e.g., "Is my extension compliant?")
+- System retrieves top 5-10 most relevant regulation chunks using semantic search
+- LLM (GPT-4o-mini) analyzes retrieved regulations + user's drawing specifications
+- Generates contextual answer citing specific sources and comparing against user's design
+
+### Intelligent Fallback Strategy
+
+The system implements a cascading fallback strategy to handle edge cases gracefully:
+
+**Tier 1: Full Hybrid Response (Ideal)**
+
+- PDF regulations found + Drawing data available
+- LLM generates answer combining both contexts
+- Includes source citations and compliance analysis
+
+**Tier 2: Drawing-Only Analysis (Fallback #1)**
+
+- No relevant PDF regulations found
+- Question is about the drawing (detected via keywords: "my building", "plot", "dimensions")
+- LLM analyzes drawing data alone and describes specifications
+
+**Tier 3: Regulations-Only Response (Fallback #2)**
+
+- PDF regulations found but no drawing data
+- LLM answers based solely on regulations
+- Standard Q&A without personalized compliance checking
+
+**Tier 4: Knowledge Summary (Final Fallback)**
+
+- No relevant regulations found AND question not about drawing
+- OR LLM refuses to answer due to insufficient context
+- Returns knowledge summary showing available topics and suggested questions
+- Helps users understand system capabilities and rephrase queries
+
+### LLM Refusal Detection
+
+The system detects when the LLM cannot confidently answer using refusal phrases like "i cannot answer", "not enough information", "insufficient information", "doesn't contain". When detected, triggers Tier 4 fallback with knowledge summary.
+
+### AI Modes
+
+**Standard Mode (⚡ Fast):**
+
+- Single-shot inference
+- Best for simple questions
+- Faster response time, lower API cost
+
+**Agentic Mode (🤖 Advanced):**
+
+- Multi-step reasoning with autonomous tool use
+- Agent breaks down complex tasks (retrieve → analyze → calculate → verify)
+- Self-verification and iteration
+- Full reasoning trace returned to user
+- Best for complex tasks requiring planning
+
+**Compliance with Adjustment Mode:**
+
+- Triggered by keywords: "adjust", "fix", "make compliant", "provide compliant JSON"
+- LLM analyzes drawing against regulations
+- Generates corrected, compliant JSON with explanations
+
+### UI Toggle for AI Modes
+
+The chat interface includes a toggle switch to select between Standard and Agentic modes:
+
+1. Toggle the switch in the chat header
+2. Ask your question
+3. System automatically routes to the selected mode
+4. View reasoning steps in agentic mode responses
+
+**API Endpoints:**
+
+- Standard: `POST /api/query` → `POST /api/agent/query`
+- Agentic: `POST /api/query-agentic` → `POST /api/agent/query-agentic`
+
+## Agentic System Tools & Functions
+
+The agentic AI system uses OpenAI function calling with 5 specialized tools:
+
+### Available Tools
+
+1. **retrieve_regulations** - Searches vector database for relevant building regulations
+   - Parameters: `query` (search query), `top_k` (number of results, default: 5)
+   - Returns: List of relevant regulation chunks with document, page, content, and relevance scores
+
+2. **analyze_drawing_compliance** - Analyzes user's building drawing against regulations
+   - Parameters: `regulations` (list of relevant regulations to check against)
+   - Uses drawing from current context automatically
+   - Returns: Structured analysis with violations, compliant aspects, and measurements
+
+3. **calculate_drawing_dimensions** - Calculates specific dimensions from building drawing
+   - Parameters: `dimension_type` (one of: "plot_area", "extension_depth", "building_height", "all")
+   - Uses drawing from current context automatically
+   - Returns: Calculated dimensions in meters/square meters
+
+4. **generate_compliant_design** - Creates adjusted, compliant version of building drawing
+   - Parameters: `original_drawing` (current drawing), `violations` (issues to fix), `regulations` (rules to follow)
+   - Returns: Corrected JSON with explanations of changes made and compliance verification
+
+5. **verify_compliance** - Validates if building drawing complies with regulations
+   - Parameters: `regulations` (regulations to verify against)
+   - Uses drawing from current context automatically
+   - Returns: Compliance status (true/false), detailed explanation, and any remaining issues
+
+### How Agentic Mode Works
+
+1. **Planning Phase** - Agent analyzes question and decides which tools to use
+2. **Execution Phase** - Agent calls tools autonomously in sequence (max 10 iterations)
+3. **Synthesis Phase** - Agent combines tool results into comprehensive answer
+4. **Response Phase** - Returns answer with full reasoning trace showing all tool calls
+
+Example workflow for "Fix my non-compliant extension":
+
+1. Agent calls `retrieve_regulations` to find relevant extension regulations
+2. Agent calls `analyze_drawing_compliance` to identify violations
+3. Agent calls `calculate_drawing_dimensions` to get current measurements
+4. Agent calls `generate_compliant_design` to create corrected version
+5. Agent calls `verify_compliance` to validate the fix
+6. Agent returns corrected JSON with full explanation and reasoning steps
+
+## Chunking Strategy
+
+The system uses a semantic merging strategy to create meaningful, context-rich chunks from PDFs.
+
+### Key Parameters
+
+```python
+target_chunk_size = 1024 tokens  # ~750-800 words
+max_chunk_size = 1536 tokens     # Upper limit
+chunk_overlap = 256 tokens       # 25% overlap for continuity
+min_chunk_size = 256 tokens      # Minimum viable chunk
+```
+
+### Algorithm
+
+1. **Extract blocks** from PDF page using PyMuPDF with font information
+2. **Identify titles** based on font size (>1.15x average font size)
+3. **Filter noise** blocks (less than 20 characters)
+4. **Merge adjacent blocks** into semantic chunks:
+   - Accumulate blocks until reaching target_chunk_size (1024 tokens)
+   - Add overlap from previous chunk (256 tokens) for context continuity
+   - Ensure minimum chunk size (256 tokens) for meaningful context
+5. **Split oversized chunks** with overlap if they exceed max_chunk_size
+6. **Preserve title context** - attach section titles to content chunks
+7. **Create embeddings** for each chunk using sentence-transformers
+
+### Benefits
+
+- **Better Retrieval Quality** - Chunks contain complete thoughts and rule descriptions
+- **Improved Answer Quality** - LLM receives sufficient context to understand regulations
+- **Reduced Chunk Count** - Fewer, more meaningful chunks (typically 200-300 vs 1000+)
+- **Context Continuity** - 256-token overlap ensures no information loss at boundaries
+- **Title Preservation** - Section titles maintained with content for better understanding
+
+### OCR Image Extraction
+
+Images in PDFs are automatically processed during indexing:
+
+- **PyMuPDF** extracts embedded images from each page
+- **Tesseract OCR** extracts text from images (English + German support)
+- Image text is stored as separate chunks with title "Image N"
+- Each image chunk gets its own embedding and is searchable
+- Failed extractions are logged but don't stop indexing
+
+**Content Type Tracking:**
+
+- Text chunks: `content_type: "text"`
+- Image chunks: `content_type: "image"`
+- Frontend can display different icons/styling based on content type
+
+**OCR Configuration:**
+
+- Languages: English (eng) + German (deu)
+- Automatic detection and processing on startup
+- Graceful fallback if OCR dependencies unavailable
+
 ## Prerequisites
 
 ### For Docker Deployment (Recommended)
@@ -205,40 +394,12 @@ Each service has its own detailed README:
 ✅ **OCR Image Extraction** - Automatically extracts and indexes text from images in PDFs  
 ✅ **Auto Logout** - Automatic logout and redirect when JWT token expires  
 ✅ **Customizable Embeddings** - Support for various sentence-transformer models  
-✅ **Docker Deployment** - Full containerization for easy deployment
-
-### 🤖 Agentic AI Features (NEW!)
-
+✅ **Docker Deployment** - Full containerization for easy deployment  
 ✅ **Multi-Step Reasoning** - Agent autonomously breaks down complex tasks  
 ✅ **Tool Use** - 5 specialized tools (retrieve, analyze, calculate, generate, verify)  
 ✅ **Self-Verification** - Agent checks and iterates on its own solutions  
 ✅ **Autonomous Planning** - Agent decides which tools to use and when  
-✅ **Transparent Reasoning** - Full trace of agent's decision-making process  
-✅ **Function Calling** - Native OpenAI function calling implementation
-
-**See [Agentic AI Documentation](ai-agent/AGENTIC_SYSTEM.md) for details**
-
-### How to Use Key Features
-
-**1. Adjusted JSON Generation**
-
-Ask the LLM to fix non-compliant drawings:
-
-```
-"My extension is 7m deep but the limit is 6m. Can you provide an adjusted compliant JSON?"
-```
-
-The LLM will provide a corrected JSON with explanations of changes made.
-
-**2. OCR Image Extraction**
-
-Images in PDFs are automatically processed during indexing. To verify:
-
-```bash
-docker exec hybrid-rag-ai-agent python check_images.py
-```
-
-See [ai-agent/README.md](ai-agent/README.md) for details.
+✅ **Transparent Reasoning** - Full trace of agent's decision-making process
 
 ## Configuration
 

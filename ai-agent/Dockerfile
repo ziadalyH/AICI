@@ -26,8 +26,11 @@ COPY . .
 # Create data directory for PDFs
 RUN mkdir -p /app/data/pdfs
 
+# Make startup script executable
+RUN chmod +x /app/startup.sh
+
 # Expose port
 EXPOSE 8001
 
-# Run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
+# Run the startup script
+CMD ["/bin/bash", "/app/startup.sh"]

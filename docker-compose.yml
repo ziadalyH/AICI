@@ -36,22 +36,6 @@ services:
       retries: 30
       start_period: 30s
 
-  # OpenSearch Dashboards
-  opensearch-dashboards:
-    image: opensearchproject/opensearch-dashboards:latest
-    container_name: hybrid-rag-opensearch-dashboards
-    environment:
-      - OPENSEARCH_HOSTS=["http://opensearch:9200"]
-      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
-    ports:
-      - "5601:5601"
-    networks:
-      - hybrid-rag-network
-    depends_on:
-      opensearch:
-        condition: service_healthy
-    restart: unless-stopped
-
   # MongoDB Database
   mongodb:
     image: mongo:7.0
@@ -104,6 +88,10 @@ services:
       - MAX_RESULTS=5
       - LOG_LEVEL=INFO
       - PYTHONPATH=/app
+      
+      # Indexing Configuration
+      # Set FORCE_REINDEX=true to delete and rebuild index on startup
+      - FORCE_REINDEX=${FORCE_REINDEX:-false}
     volumes:
       - ./ai-agent/data:/app/data
       - models-cache:/app/models

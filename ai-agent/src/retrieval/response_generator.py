@@ -309,6 +309,7 @@ class ResponseGenerator:
                 "snippet": result.source_snippet,
                 "relevance": result.score,
                 "title": result.title,
+                "content_type": result.content_type,  # "text" or "image"
                 "selected": (i == 0)  # Mark first as selected
             })
         
@@ -421,6 +422,7 @@ class ResponseGenerator:
                 "snippet": result.source_snippet,
                 "relevance": result.score,
                 "title": result.title,
+                "content_type": result.content_type,  # "text" or "image"
                 "selected": (i == best_idx)  # Mark which one was selected
             })
         

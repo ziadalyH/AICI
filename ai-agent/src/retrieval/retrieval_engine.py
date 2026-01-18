@@ -131,7 +131,8 @@ class RetrievalEngine:
                     source_snippet=source.get("text", ""),
                     score=score,
                     document_id=document_id,
-                    title=source.get("title")  # Extract title
+                    title=source.get("title"),  # Extract title
+                    content_type=source.get("content_type", "text")  # Extract content type
                 )
                 pdf_results.append(pdf_result)
             
@@ -208,7 +209,8 @@ class RetrievalEngine:
                     source_snippet=source.get("text", ""),
                     score=score,
                     document_id=document_id,
-                    title=source.get("title")
+                    title=source.get("title"),
+                    content_type=source.get("content_type", "text")  # Extract content type
                 )
                 pdf_results.append(pdf_result)
             

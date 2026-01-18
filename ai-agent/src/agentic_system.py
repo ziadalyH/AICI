@@ -84,40 +84,32 @@ class AgenticRAGSystem:
             },
             {
                 "name": "analyze_drawing_compliance",
-                "description": "Analyze a building drawing against regulations to identify compliance issues. Returns a structured analysis of violations and compliant aspects.",
+                "description": "Analyze the user's building drawing against regulations to identify compliance issues. Uses the drawing from the current context. Returns a structured analysis of violations and compliant aspects.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "drawing_json": {
-                            "type": "object",
-                            "description": "The building drawing JSON to analyze"
-                        },
                         "regulations": {
                             "type": "array",
                             "description": "List of relevant regulations to check against",
                             "items": {"type": "string"}
                         }
                     },
-                    "required": ["drawing_json", "regulations"]
+                    "required": ["regulations"]
                 }
             },
             {
                 "name": "calculate_drawing_dimensions",
-                "description": "Calculate specific dimensions from a building drawing (plot area, extension depth, building height, etc.).",
+                "description": "Calculate specific dimensions from the user's building drawing (plot area, extension depth, building height, etc.). Uses the drawing from the current context.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "drawing_json": {
-                            "type": "object",
-                            "description": "The building drawing JSON"
-                        },
                         "dimension_type": {
                             "type": "string",
                             "enum": ["plot_area", "extension_depth", "building_height", "all"],
                             "description": "Type of dimension to calculate"
                         }
                     },
-                    "required": ["drawing_json", "dimension_type"]
+                    "required": ["dimension_type"]
                 }
             },
             {
@@ -146,21 +138,17 @@ class AgenticRAGSystem:
             },
             {
                 "name": "verify_compliance",
-                "description": "Verify if a building drawing complies with regulations. Returns true/false with detailed explanation.",
+                "description": "Verify if the user's building drawing complies with regulations. Uses the drawing from the current context. Returns true/false with detailed explanation.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "drawing_json": {
-                            "type": "object",
-                            "description": "The drawing to verify"
-                        },
                         "regulations": {
                             "type": "array",
                             "description": "Regulations to verify against",
                             "items": {"type": "string"}
                         }
                     },
-                    "required": ["drawing_json", "regulations"]
+                    "required": ["regulations"]
                 }
             }
         ]
@@ -360,13 +348,11 @@ Remember: You can call multiple tools in sequence. Think step by step."""
             
             elif function_name == "analyze_drawing_compliance":
                 return self._tool_analyze_compliance(
-                    drawing_json=arguments["drawing_json"],
                     regulations=arguments["regulations"]
                 )
             
             elif function_name == "calculate_drawing_dimensions":
                 return self._tool_calculate_dimensions(
-                    drawing_json=arguments["drawing_json"],
                     dimension_type=arguments["dimension_type"]
                 )
             
@@ -379,7 +365,6 @@ Remember: You can call multiple tools in sequence. Think step by step."""
             
             elif function_name == "verify_compliance":
                 return self._tool_verify_compliance(
-                    drawing_json=arguments["drawing_json"],
                     regulations=arguments["regulations"]
                 )
             
@@ -431,11 +416,15 @@ Remember: You can call multiple tools in sequence. Think step by step."""
     
     def _tool_analyze_compliance(
         self,
-        drawing_json: Dict[str, Any],
         regulations: List[str]
     ) -> Dict[str, Any]:
         """Tool: Analyze drawing compliance."""
         self.logger.info("🔍 Analyzing drawing compliance")
+        
+        # Get drawing from context
+        drawing_json = self.current_context.get("drawing_json")
+        if not drawing_json:
+            return {"success": False, "error": "No drawing available in context"}
         
         try:
             # Use LLM to analyze compliance
@@ -486,11 +475,15 @@ Format as JSON:
     
     def _tool_calculate_dimensions(
         self,
-        drawing_json: Dict[str, Any],
         dimension_type: str
     ) -> Dict[str, Any]:
         """Tool: Calculate dimensions from drawing."""
         self.logger.info(f"📏 Calculating dimensions: {dimension_type}")
+        
+        # Get drawing from context
+        drawing_json = self.current_context.get("drawing_json")
+        if not drawing_json:
+            return {"success": False, "error": "No drawing available in context"}
         
         try:
             dimensions = {}
@@ -600,11 +593,15 @@ Format as JSON:
     
     def _tool_verify_compliance(
         self,
-        drawing_json: Dict[str, Any],
         regulations: List[str]
     ) -> Dict[str, Any]:
         """Tool: Verify compliance."""
         self.logger.info("✅ Verifying compliance")
+        
+        # Get drawing from context
+        drawing_json = self.current_context.get("drawing_json")
+        if not drawing_json:
+            return {"success": False, "error": "No drawing available in context"}
         
         try:
             prompt = f"""Verify if this building drawing complies with the regulations.

@@ -38,6 +38,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSendMessage }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isAgenticMode, setIsAgenticMode] = useState(false);
   const [knowledgeSummary, setKnowledgeSummary] = useState<KnowledgeSummary | null>(null);
   const [isLoadingSummary, setIsLoadingSummary] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -96,7 +97,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSendMessage }) => {
     setIsLoading(true);
 
     try {
-      const response = await onSendMessage(userMessage.content);
+      // Use agentic mode if toggle is enabled
+      const response = isAgenticMode 
+        ? await apiClient.queryAgentic(userMessage.content)
+        : await onSendMessage(userMessage.content);
 
       const assistantMessage: Message = {
         id: `assistant-${Date.now()}`,
@@ -129,6 +133,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSendMessage }) => {
     <div className="chat-interface">
       <div className="chat-header">
         <h3>Q&A Assistant</h3>
+        <div className="mode-toggle">
+          <label className="toggle-label">
+            <input
+              type="checkbox"
+              checked={isAgenticMode}
+              onChange={(e) => setIsAgenticMode(e.target.checked)}
+              className="toggle-checkbox"
+            />
+            <span className="toggle-slider"></span>
+            <span className="toggle-text">
+              {isAgenticMode ? '🤖 Agentic Mode' : '⚡ Standard Mode'}
+            </span>
+          </label>
+          <div className="mode-description">
+            {isAgenticMode 
+              ? 'Multi-step reasoning with tool use' 
+              : 'Fast single-shot inference'}
+          </div>
+        </div>
       </div>
 
       <div className="messages-container">

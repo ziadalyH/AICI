@@ -1,27 +1,28 @@
 {
-  "overview": "The documents cover regulations regarding permitted development rights in England, particularly for householders. They outline specific rules for extensions, height restrictions, and special considerations for protected areas.",
+  "overview": "The indexed content covers regulations and guidelines related to permitted development rights for householders in England, including specific measurements and restrictions for extensions and alterations to residential properties. It also addresses how to interpret building drawings in relation to these regulations.",
   "topics": [
-    "Permitted Development Rights",
-    "Householder Extensions",
-    "Height Restrictions",
-    "Measurement Guidelines for Extensions",
-    "Special Character Protection for Article 1(5) Land",
-    "World Heritage Site Regulations",
-    "Roof Design Considerations",
-    "Building Drawings and Illustrations"
+    "Permitted development rights",
+    "Eaves height measurement",
+    "Building line restrictions",
+    "Rear wall extension guidelines",
+    "Veranda and balcony regulations",
+    "Planning in England",
+    "Change of use",
+    "Householder development regulations"
   ],
   "suggested_questions": [
-    "What is the definition of the 'highest part of the roof of the existing dwellinghouse' according to the regulations?",
-    "How should the length of a rear extension be measured?",
-    "What additional restrictions apply to Class A development on Article 1(5) land?",
-    "What is the significance of the ridge line in determining building height?",
-    "How does the design of a hipped roof affect the extension rules?",
-    "What are the implications of building in a World Heritage Site?",
-    "Can you provide the specific height limits for extensions in residential areas?",
-    "What details are illustrated in Figure 20 regarding extension measurements?",
-    "How do the regulations differentiate between original and extended parts of a house?",
-    "What specific elements must be considered in the design analysis of a building drawing?",
-    "What are the visual indicators that might suggest non-compliance in a building drawing?",
-    "How can I determine if my proposed extension meets the permitted development criteria?"
+    "What is the measurement approach for eaves where there is a flat roof?",
+    "What are the restrictions regarding development in front of the building line of the principal elevation?",
+    "How is the measurement of an extension defined when it is attached to the rear wall?",
+    "What specific elements are included in the definition of a veranda or raised platform?",
+    "Are there any limitations to the height of balconies in residential developments?",
+    "What does the term 'no development area' refer to in the context of household extensions?",
+    "How does the presence of stepped rear walls affect extension measurements?",
+    "What are the implications of having eaves of different heights on a property?",
+    "Can you analyze my building drawing to determine if it complies with permitted development regulations?",
+    "What are the dimensions and layout requirements for a proposed extension according to the guidelines?",
+    "How does one determine if a proposed change of use is compliant with planning regulations?",
+    "What documentation is necessary to demonstrate compliance with household development rights?",
+    "What are the specific requirements for measuring the depth of an extension beyond the rear wall?"
   ]
 }

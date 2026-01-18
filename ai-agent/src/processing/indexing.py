@@ -166,7 +166,8 @@ class VectorIndexBuilder:
                 "pdf_filename": {"type": "keyword"},
                 "page_number": {"type": "integer"},
                 "paragraph_index": {"type": "integer"},
-                "title": {"type": "text"}
+                "title": {"type": "text"},
+                "content_type": {"type": "keyword"}  # "text" or "image"
             })
         
         try:
@@ -286,7 +287,8 @@ class VectorIndexBuilder:
                         "page_number": chunk.page_number,
                         "paragraph_index": chunk.paragraph_index,
                         "text": chunk.text,
-                        "title": chunk.title  # Store title separately (can be None)
+                        "title": chunk.title,  # Store title separately (can be None)
+                        "content_type": chunk.content_type  # "text" or "image"
                     }
                     
                     # Only add title_embedding if chunk has a title

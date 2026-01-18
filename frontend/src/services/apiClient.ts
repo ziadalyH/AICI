@@ -21,6 +21,11 @@ interface QueryResponse {
   sources?: any[];
   answer_type?: string;
   drawing_context_used?: boolean;
+  knowledge_summary?: {
+    overview: string;
+    topics: string[];
+    suggested_questions: string[];
+  };
 }
 
 interface UpdateObjectListResponse {
@@ -191,6 +196,21 @@ class ApiClient {
       const response = await this.client.post<QueryResponse>("/api/query", {
         question,
       });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Agentic query method (multi-step reasoning)
+  async queryAgentic(question: string): Promise<QueryResponse> {
+    try {
+      const response = await this.client.post<QueryResponse>(
+        "/api/query-agentic",
+        {
+          question,
+        },
+      );
       return response.data;
     } catch (error) {
       throw error;

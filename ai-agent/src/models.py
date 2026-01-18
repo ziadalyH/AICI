@@ -13,6 +13,7 @@ class PDFParagraph:
     paragraph_index: int
     text: str
     title: Optional[str] = None  # Section title/heading for this chunk
+    content_type: str = "text"  # "text" or "image" - indicates source of content
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -36,6 +37,7 @@ class PDFChunk:
     paragraph_index: int
     text: str
     title: Optional[str] = None  # Section title/heading for this chunk
+    content_type: str = "text"  # "text" or "image" - indicates source of content
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -61,6 +63,7 @@ class PDFResult:
     score: float
     document_id: str = ""
     title: Optional[str] = None  # Section title/heading for this result
+    content_type: str = "text"  # "text" or "image" - indicates source of content
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""

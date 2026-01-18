@@ -298,6 +298,7 @@ async def process_query(request: QueryRequest):
                     "snippet": result.source_snippet,
                     "relevance": result.score,
                     "title": result.title,
+                    "content_type": getattr(result, 'content_type', 'text'),  # "text" or "image"
                     "selected": True  # Single source is always selected
                 }
                 
