@@ -116,11 +116,14 @@ IMPORTANT INSTRUCTIONS FOR SUGGESTED QUESTIONS:
 - Avoid generic questions like "What are the main regulations?" - instead ask about SPECIFIC regulations you see
 - Each question should be concrete enough that someone reading the samples could answer it
 - Focus on factual questions about specific details, requirements, or rules mentioned in the content
+- Include questions about building drawings and design analysis (users can upload drawings)
 
 Please provide:
 1. A brief overview of the main topics covered (2-3 sentences)
 2. A list of 5-10 key topics/subjects that are actually present in the sample content
-3. 8-12 SPECIFIC example questions that can be answered from the content (not generic questions)
+3. 8-15 SPECIFIC example questions that can be answered from the content (not generic questions)
+   - Include questions about regulations/PDFs
+   - Include questions about building drawings and design analysis
 
 Format your response as JSON:
 {{
@@ -129,6 +132,8 @@ Format your response as JSON:
   "suggested_questions": [
     "Specific question about Topic 1?",
     "Specific question about a detail in Topic 2?",
+    "Can you describe my building drawing?",
+    "What are the dimensions of my plot?",
     ...
   ]
 }}
@@ -137,6 +142,9 @@ Example of GOOD questions (specific):
 - "What is the maximum height limit for residential buildings?"
 - "What are the setback requirements for extensions?"
 - "How is floor area calculated for planning purposes?"
+- "Can you describe my building drawing?"
+- "What are the dimensions of my extension?"
+- "Is my building design compliant with regulations?"
 
 Example of BAD questions (too generic):
 - "What are the main regulations?"
@@ -150,9 +158,9 @@ Example of BAD questions (too generic):
             # Use centralized LLM service
             summary_data = self.llm_service.generate_json(
                 prompt=prompt,
-                system_prompt="You are a helpful assistant that analyzes document collections and generates summaries with SPECIFIC, answerable questions. Always respond with valid JSON. Focus on concrete, detailed questions that reference specific content.",
+                system_prompt="You are a helpful assistant that analyzes document collections and generates summaries with SPECIFIC, answerable questions. Always respond with valid JSON. Focus on concrete, detailed questions that reference specific content. Include questions about both regulations AND building drawings.",
                 temperature=0.5,  # Lower temperature for more focused output
-                max_tokens=1200
+                max_tokens=1500
             )
             
             # Validate structure
@@ -164,19 +172,30 @@ Example of BAD questions (too generic):
             
         except Exception as e:
             self.logger.error(f"Failed to generate summary with LLM: {e}")
-            # Return fallback summary with specific questions
+            # Return fallback summary with specific questions including drawing questions
             return {
-                "overview": "This knowledge base contains building regulations and planning documents with specific requirements and guidelines.",
-                "topics": ["Building Regulations", "Planning Requirements", "Height Restrictions", "Setback Rules"],
+                "overview": "This knowledge base contains building regulations and planning documents with specific requirements and guidelines. You can also upload building drawings for analysis and compliance checking.",
+                "topics": [
+                    "Building Regulations", 
+                    "Planning Requirements", 
+                    "Height Restrictions", 
+                    "Setback Rules",
+                    "Drawing Analysis",
+                    "Compliance Checking"
+                ],
                 "suggested_questions": [
                     "What are the height restrictions for residential buildings?",
                     "What are the setback requirements from boundaries?",
                     "How is permitted development defined?",
                     "What are the requirements for extensions?",
                     "What is the maximum floor area allowed?",
-                    "What are the parking requirements?",
-                    "What materials are permitted for construction?",
-                    "What are the fire safety requirements?"
+                    "Can you describe my building drawing?",
+                    "What are the dimensions of my plot?",
+                    "Is my extension compliant with regulations?",
+                    "What is the depth of my extension?",
+                    "Can you analyze my building design?",
+                    "What layers are in my drawing?",
+                    "How can I make my design compliant?"
                 ]
             }
     

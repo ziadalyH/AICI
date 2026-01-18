@@ -113,7 +113,7 @@ ai-agent/
 ├── main.py                 # FastAPI application
 ├── requirements.txt        # Python dependencies
 ├── Dockerfile             # Docker image definition
-├── src/                   # Explaino RAG core
+├── src/                   # RAG core
 │   ├── rag_system.py     # Main orchestrator
 │   ├── llm_inference.py  # LLM service
 │   ├── models.py         # Data models

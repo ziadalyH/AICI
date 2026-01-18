@@ -1,5 +1,5 @@
 """
-Hybrid RAG AI Agent Service - Integrated with Explaino RAG
+Hybrid RAG AI Agent Service - Integrated with RAG
 Combines user's drawing JSON with PDF document retrieval for intelligent Q&A
 """
 import os
@@ -82,6 +82,14 @@ class QueryResponse(BaseModel):
         default=False,
         description="Whether drawing JSON was used in reasoning"
     )
+    reasoning_steps: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Agentic reasoning steps (if agentic mode used)"
+    )
+    knowledge_summary: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Knowledge summary (shown when LLM refuses to answer)"
+    )
 
     class Config:
         json_schema_extra = {
@@ -95,7 +103,15 @@ class QueryResponse(BaseModel):
                         "relevance": 0.89
                     }
                 ],
-                "drawing_context_used": True
+                "drawing_context_used": True,
+                "reasoning_steps": [
+                    {
+                        "step": 1,
+                        "action": "retrieve_regulations",
+                        "result": "Found 5 relevant regulations"
+                    }
+                ],
+                "knowledge_summary": None
             }
         }
 
@@ -115,7 +131,7 @@ async def lifespan(app: FastAPI):
     # Startup: Initialize the RAG system
     try:
         logger.info("=" * 80)
-        logger.info("Initializing Hybrid RAG AI Agent with Explaino")
+        logger.info("Initializing Hybrid RAG AI Agent")
         logger.info("=" * 80)
         
         # Load configuration from environment variables
@@ -145,7 +161,7 @@ async def lifespan(app: FastAPI):
 # Create FastAPI application
 app = FastAPI(
     title="Hybrid RAG AI Agent Service",
-    description="Combines user's drawing JSON with PDF document retrieval for intelligent Q&A using Explaino RAG",
+    description="Combines user's drawing JSON with PDF document retrieval for intelligent Q&A using  RAG",
     version="2.0.0",
     lifespan=lifespan
 )
@@ -172,7 +188,7 @@ async def root():
             "Drawing JSON context integration",
             "PDF document retrieval",
             "Advanced query preprocessing",
-            "Multi-source reasoning with Explaino RAG"
+            "Multi-source reasoning with RAG"
         ]
     }
 
@@ -199,13 +215,13 @@ async def health_check():
 @app.post("/api/agent/query", response_model=QueryResponse)
 async def process_query(request: QueryRequest):
     """
-    Process a query using the hybrid RAG pipeline with Explaino and conversation history.
+    Process a query using the hybrid RAG pipeline
     
     This endpoint:
     1. Takes user's question, optional drawing JSON, and optional session_id
     2. Retrieves conversation history if session_id provided
     3. Preprocesses the question (stopword removal, etc.)
-    4. Retrieves relevant PDF documents using Explaino RAG
+    4. Retrieves relevant PDF documents using RAG
     5. Combines retrieved documents with user's drawing JSON and conversation history
     6. Sends all context to LLM for reasoning
     7. Returns the best answer
@@ -258,10 +274,13 @@ async def process_query(request: QueryRequest):
             question=request.question,
             drawing_json=request.drawing_json if request.drawing_json else None,
             drawing_updated_at=request.drawing_updated_at,
-            session_id=request.session_id
+            session_id=request.session_id,
+            use_agentic=False  # Standard mode by default
         )
         
         # Extract answer and sources based on result type
+        knowledge_summary = None  # Initialize for all cases
+        
         if isinstance(result, PDFResponse):
             answer = result.generated_answer
             answer_type = "pdf"
@@ -295,6 +314,7 @@ async def process_query(request: QueryRequest):
             answer_type = "no_answer"
             sources = None
             drawing_context_used = False
+            knowledge_summary = result.knowledge_summary
         else:
             raise ValueError(f"Unexpected result type: {type(result)}")
         
@@ -305,7 +325,9 @@ async def process_query(request: QueryRequest):
             answer=answer,
             answer_type=answer_type,
             sources=sources,
-            drawing_context_used=drawing_context_used
+            drawing_context_used=drawing_context_used,
+            reasoning_steps=getattr(result, 'reasoning_steps', None),
+            knowledge_summary=knowledge_summary if answer_type == "no_answer" else None
         )
         
     except ValueError as e:
@@ -332,6 +354,103 @@ async def process_query(request: QueryRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to process query: An unexpected error occurred"
+        )
+
+
+@app.post("/api/agent/query-agentic", response_model=QueryResponse)
+async def process_query_agentic(request: QueryRequest):
+    """
+    Process a query using the AGENTIC workflow with function calling.
+    
+    This endpoint enables:
+    - Multi-step reasoning
+    - Autonomous tool use (retrieve, analyze, generate, verify)
+    - Self-verification and iteration
+    - Complex task decomposition
+    
+    The agent can:
+    1. Retrieve relevant regulations
+    2. Analyze drawing compliance
+    3. Calculate dimensions
+    4. Generate compliant designs
+    5. Verify solutions
+    
+    Args:
+        request: QueryRequest containing question, drawing_json, and optional parameters
+        
+    Returns:
+        QueryResponse with answer, sources, and reasoning steps
+        
+    Raises:
+        HTTPException: If pipeline is not initialized or query processing fails
+    """
+    # Check if pipeline is initialized
+    if rag_system is None:
+        logger.error("Query attempted but RAG system not initialized")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI Agent service temporarily unavailable"
+        )
+    
+    # Validate request
+    if not request.question or not request.question.strip():
+        logger.warning("Empty query submitted")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Query cannot be empty"
+        )
+    
+    try:
+        logger.info("=" * 80)
+        logger.info("🤖 AGENTIC QUERY ENDPOINT")
+        logger.info("=" * 80)
+        logger.info(f"Query: {request.question}")
+        logger.info(f"Drawing JSON provided: {bool(request.drawing_json)}")
+        
+        # Process with agentic workflow
+        result = rag_system.answer_question(
+            question=request.question,
+            drawing_json=request.drawing_json if request.drawing_json else None,
+            drawing_updated_at=request.drawing_updated_at,
+            session_id=request.session_id,
+            use_agentic=True  # Enable agentic mode
+        )
+        
+        # Extract answer and sources
+        knowledge_summary = None  # Initialize for all cases
+        
+        if isinstance(result, PDFResponse):
+            answer = result.generated_answer
+            answer_type = "pdf"
+            sources = result.all_sources if result.all_sources else []
+            reasoning_steps = result.reasoning_steps
+            drawing_context_used = bool(request.drawing_json)
+        elif isinstance(result, NoAnswerResponse):
+            answer = result.message
+            answer_type = "no_answer"
+            sources = None
+            reasoning_steps = None
+            drawing_context_used = False
+            knowledge_summary = result.knowledge_summary
+        else:
+            raise ValueError(f"Unexpected result type: {type(result)}")
+        
+        logger.info("🎉 Agentic query processed successfully")
+        
+        return QueryResponse(
+            answer=answer,
+            answer_type=answer_type,
+            sources=sources,
+            drawing_context_used=drawing_context_used,
+            reasoning_steps=reasoning_steps,
+            knowledge_summary=knowledge_summary if answer_type == "no_answer" else None
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in agentic query: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process agentic query: {str(e)}"
         )
 
 

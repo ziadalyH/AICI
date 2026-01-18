@@ -554,6 +554,21 @@ class ResponseGenerator:
                 self.logger.info("LLM refused to answer - returning None to trigger NoAnswerResponse")
                 return None, best_idx
             
+            # POST-PROCESSING: Ensure timestamp is included when drawing is present
+            if drawing_json and formatted_timestamp and answer:
+                # Check if timestamp is already mentioned
+                has_timestamp = (
+                    'drawing from' in answer_lower or 
+                    formatted_timestamp.lower() in answer_lower or
+                    'updated drawing' in answer_lower
+                )
+                
+                if not has_timestamp:
+                    # Prepend timestamp to answer
+                    self.logger.info(f"⚠️ LLM did not include timestamp, prepending it...")
+                    answer = f"Based on the available regulations and your drawing from {formatted_timestamp}, {answer[0].lower()}{answer[1:]}"
+                    self.logger.info(f"✅ Timestamp prepended to answer")
+            
             self.logger.info(f"✅ LLM answer generated")
             
             return answer, best_idx
@@ -605,6 +620,21 @@ class ResponseGenerator:
             prompt=prompt,
             system_prompt=system_prompt
         )
+        
+        # POST-PROCESSING: Ensure timestamp is included when drawing is present
+        if drawing_json and formatted_timestamp and answer:
+            # Check if timestamp is already mentioned
+            answer_lower = answer.lower()
+            has_timestamp = (
+                'drawing from' in answer_lower or 
+                formatted_timestamp.lower() in answer_lower or
+                'updated drawing' in answer_lower
+            )
+            
+            if not has_timestamp:
+                # Prepend timestamp to answer
+                self.logger.info(f"⚠️ LLM did not include timestamp, prepending it...")
+                answer = f"Based on the available regulations and your drawing from {formatted_timestamp}, {answer[0].lower()}{answer[1:]}"
         
         return answer
     

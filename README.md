@@ -5,17 +5,21 @@ A production-ready question-answering system that combines document knowledge wi
 ## 🚀 Quick Start
 
 ```bash
-# 1. Configure environment
+# 1. Clone the repository
+git clone https://github.com/ziadalyH/AICI.git
+cd AICI/
+
+# 2. Configure environment
 cp .env.example .env
 # Edit .env and add your OPENAI_API_KEY
 
-# 2. Start all services
+# 3. Start all services
 docker-compose up --build
 
-# 3. Index PDFs (place PDFs in ai-agent/data/pdfs/)
+# 4. Index PDFs (place PDFs in ai-agent/data/pdfs/)
 docker exec hybrid-rag-ai-agent python index_pdfs.py
 
-# 4. Access the application
+# 5. Access the application
 # Frontend: http://localhost
 # Backend API: http://localhost:8000/docs
 # AI Agent API: http://localhost:8001/docs
@@ -124,10 +128,16 @@ The Hybrid RAG Q&A System is a three-tier application designed for building regu
 
 ## Installation
 
-### Step 1: Configure Environment
+### Step 1: Clone the Repository
 
 ```bash
-cd AICI
+git clone https://github.com/ziadalyH/AICI.git
+cd AICI/
+```
+
+### Step 2: Configure Environment
+
+```bash
 cp .env.example .env
 ```
 
@@ -142,7 +152,7 @@ EMBEDDING_MODEL=sentence-transformers/all-mpnet-base-v2
 EMBEDDING_DIMENSION=768
 ```
 
-### Step 2: Start Services
+### Step 3: Start Services
 
 ```bash
 docker-compose up --build
@@ -150,7 +160,7 @@ docker-compose up --build
 
 Wait for all services to start (2-3 minutes for first run).
 
-### Step 3: Index PDF Documents
+### Step 4: Index PDF Documents
 
 Place your PDF files in `ai-agent/data/pdfs/` and run:
 
@@ -158,7 +168,7 @@ Place your PDF files in `ai-agent/data/pdfs/` and run:
 docker exec hybrid-rag-ai-agent python index_pdfs.py
 ```
 
-### Step 4: Verify Installation
+### Step 5: Verify Installation
 
 ```bash
 # Check services
@@ -196,6 +206,17 @@ Each service has its own detailed README:
 ✅ **Auto Logout** - Automatic logout and redirect when JWT token expires  
 ✅ **Customizable Embeddings** - Support for various sentence-transformer models  
 ✅ **Docker Deployment** - Full containerization for easy deployment
+
+### 🤖 Agentic AI Features (NEW!)
+
+✅ **Multi-Step Reasoning** - Agent autonomously breaks down complex tasks  
+✅ **Tool Use** - 5 specialized tools (retrieve, analyze, calculate, generate, verify)  
+✅ **Self-Verification** - Agent checks and iterates on its own solutions  
+✅ **Autonomous Planning** - Agent decides which tools to use and when  
+✅ **Transparent Reasoning** - Full trace of agent's decision-making process  
+✅ **Function Calling** - Native OpenAI function calling implementation
+
+**See [Agentic AI Documentation](ai-agent/AGENTIC_SYSTEM.md) for details**
 
 ### How to Use Key Features
 

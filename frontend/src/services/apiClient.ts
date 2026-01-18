@@ -58,11 +58,15 @@ class ApiClient {
       (response) => response,
       (error: AxiosError) => {
         if (error.response?.status === 401) {
-          // Token expired or invalid - clear it and trigger logout
+          // Only trigger unauthorized callback if user was actually logged in
+          const hadToken = this.getToken() !== null;
+
+          // Token expired or invalid - clear it
           this.clearToken();
 
-          // Call the unauthorized callback if set (will redirect to login)
-          if (this.onUnauthorized) {
+          // Call the unauthorized callback only if user was logged in
+          // (don't show "session expired" on login page)
+          if (hadToken && this.onUnauthorized) {
             this.onUnauthorized();
           }
         }

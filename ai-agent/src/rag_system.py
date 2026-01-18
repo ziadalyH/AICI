@@ -20,6 +20,7 @@ from .retrieval.retrieval_engine import RetrievalEngine
 from .retrieval.response_generator import ResponseGenerator
 from .llm_inference import LLMInferenceService
 from config.knowledge_summary import KnowledgeSummaryGenerator
+from .agentic_system import AgenticRAGSystem
 
 
 class RAGSystem:
@@ -96,7 +97,15 @@ class RAGSystem:
             llm_service=self.llm_service
         )
         
-        self.logger.info("RAG System initialized successfully")
+        # Initialize agentic system
+        self.agentic_system = AgenticRAGSystem(
+            config=config,
+            retrieval_engine=self.retrieval_engine,
+            query_processor=self.query_processor,
+            logger=self.logger
+        )
+        
+        self.logger.info("RAG System initialized successfully (with agentic capabilities)")
     
     def _setup_logger(self) -> logging.Logger:
         """
@@ -128,7 +137,8 @@ class RAGSystem:
         question: str,
         drawing_json: Optional[Dict[str, Any]] = None,
         drawing_updated_at: Optional[str] = None,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
+        use_agentic: bool = False
     ) -> Union[PDFResponse, NoAnswerResponse]:
         """
         Main entry point for answering questions with conversation context.
@@ -145,6 +155,7 @@ class RAGSystem:
             drawing_json: Optional user's building drawing JSON for context
             drawing_updated_at: Optional ISO timestamp of when drawing was last updated
             session_id: Optional session ID for conversation history
+            use_agentic: If True, use agentic workflow with function calling
             
         Returns:
             PDFResponse if PDF content found and LLM can answer
@@ -161,24 +172,52 @@ class RAGSystem:
             self.logger.info(f"Drawing updated at: {drawing_updated_at}")
         if session_id:
             self.logger.info(f"Session ID provided: {session_id}")
+        if use_agentic:
+            self.logger.info("🤖 Using AGENTIC workflow")
         
         try:
-            # Step 1: Process and embed the query
-            self.logger.info("Step 1: Processing query")
-            query_embedding = self.query_processor.process_query(question)
+            # Use agentic workflow if requested
+            if use_agentic:
+                return self.answer_question_agentic(
+                    question=question,
+                    drawing_json=drawing_json,
+                    drawing_updated_at=drawing_updated_at
+                )
             
-            # Step 2: Retrieve relevant PDF content
-            self.logger.info("Step 2: Retrieving relevant PDF content")
-            retrieval_result = self.retrieval_engine.retrieve(query_embedding, question)
+            # Standard workflow
             
-            # Step 3: Generate response with LLM-based answer (including drawing JSON and timestamp)
-            self.logger.info("Step 3: Generating response")
-            response = self.response_generator.generate_response(
-                query=question,
-                result=retrieval_result,
-                drawing_json=drawing_json,
-                drawing_updated_at=drawing_updated_at
-            )
+            # Check if this is a drawing-only question (no need for PDF retrieval)
+            from config.prompt_templates import PromptTemplates
+            prompt_templates = PromptTemplates()
+            is_drawing_only = prompt_templates.detect_drawing_only_question(question)
+            
+            if is_drawing_only and drawing_json:
+                self.logger.info("🎨 Detected drawing-only question - skipping PDF retrieval")
+                # Skip retrieval, go directly to drawing analysis
+                response = self.response_generator.generate_response(
+                    query=question,
+                    result=None,  # No PDF results
+                    drawing_json=drawing_json,
+                    drawing_updated_at=drawing_updated_at
+                )
+            else:
+                # Standard workflow with PDF retrieval
+                # Step 1: Process and embed the query
+                self.logger.info("Step 1: Processing query")
+                query_embedding = self.query_processor.process_query(question)
+                
+                # Step 2: Retrieve relevant PDF content
+                self.logger.info("Step 2: Retrieving relevant PDF content")
+                retrieval_result = self.retrieval_engine.retrieve(query_embedding, question)
+                
+                # Step 3: Generate response with LLM-based answer (including drawing JSON and timestamp)
+                self.logger.info("Step 3: Generating response")
+                response = self.response_generator.generate_response(
+                    query=question,
+                    result=retrieval_result,
+                    drawing_json=drawing_json,
+                    drawing_updated_at=drawing_updated_at
+                )
             
             self.logger.info(f"Successfully generated {response.answer_type} response")
             return response
@@ -190,6 +229,68 @@ class RAGSystem:
             self.logger.error(f"Error answering question: {str(e)}", exc_info=True)
             raise
     
+    def answer_question_agentic(
+        self,
+        question: str,
+        drawing_json: Optional[Dict[str, Any]] = None,
+        drawing_updated_at: Optional[str] = None
+    ) -> Union[PDFResponse, NoAnswerResponse]:
+        """
+        Answer question using agentic workflow with function calling.
+        
+        This enables multi-step reasoning, tool use, and autonomous decision-making.
+        
+        Args:
+            question: User's question
+            drawing_json: Optional building drawing JSON
+            drawing_updated_at: Optional timestamp
+            
+        Returns:
+            PDFResponse with answer and reasoning steps
+            NoAnswerResponse if agent cannot answer
+        """
+        self.logger.info("🤖 Starting agentic workflow")
+        
+        try:
+            # Process with agentic system
+            result = self.agentic_system.process_with_agent(
+                query=question,
+                drawing_json=drawing_json,
+                drawing_updated_at=drawing_updated_at,
+                max_iterations=10
+            )
+            
+            # Convert to PDFResponse format
+            if result.get("answer"):
+                return PDFResponse(
+                    answer_type="pdf",
+                    pdf_filename="[Agentic Analysis]",
+                    page_number=0,
+                    paragraph_index=0,
+                    source_snippet=f"Agentic workflow completed in {result['iterations']} iterations",
+                    generated_answer=result["answer"],
+                    score=1.0,
+                    document_id="agentic",
+                    title=f"Agentic Analysis ({result['iterations']} reasoning steps)",
+                    all_sources=result.get("sources", []),
+                    reasoning_steps=result.get("reasoning_steps", [])
+                )
+            else:
+                return NoAnswerResponse(
+                    message="The agentic system could not generate an answer. Please try rephrasing your question."
+                )
+                
+        except Exception as e:
+            self.logger.error(f"Error in agentic workflow: {str(e)}", exc_info=True)
+            # Fall back to standard workflow
+            self.logger.info("Falling back to standard workflow")
+            return self.answer_question(
+                question=question,
+                drawing_json=drawing_json,
+                drawing_updated_at=drawing_updated_at,
+                use_agentic=False
+            )
+    
     def build_index(
         self, 
         force_rebuild: bool = False
@@ -198,12 +299,14 @@ class RAGSystem:
         Build or rebuild the vector index from PDF files.
         
         This method:
-        1. Checks what's already indexed (unless force_rebuild=True)
-        2. Only indexes missing PDFs (resume capability)
-        3. Ingests PDF documents
-        4. Chunks the content into segments
-        5. Generates embeddings for all chunks
-        6. Builds the OpenSearch vector index
+        1. Deletes old knowledge summary (to ensure fresh generation)
+        2. Checks what's already indexed (unless force_rebuild=True)
+        3. Only indexes missing PDFs (resume capability)
+        4. Ingests PDF documents
+        5. Chunks the content into segments
+        6. Generates embeddings for all chunks
+        7. Builds the OpenSearch vector index
+        8. Generates new knowledge summary
         
         Args:
             force_rebuild: If True, delete and rebuild entire index from scratch
@@ -214,6 +317,18 @@ class RAGSystem:
         self.logger.info("Starting index building process (PDF-only)")
         
         try:
+            # STEP 0: Delete old knowledge summary before indexing
+            self.logger.info("Step 0: Deleting old knowledge summary...")
+            try:
+                summary_file = Path("data/knowledge_summary.json")
+                if summary_file.exists():
+                    summary_file.unlink()
+                    self.logger.info("✓ Old knowledge summary deleted")
+                else:
+                    self.logger.info("No existing knowledge summary found")
+            except Exception as e:
+                self.logger.warning(f"Failed to delete old knowledge summary: {e}")
+            
             # Check if we should rebuild from scratch
             if force_rebuild:
                 self.logger.info("Force rebuild requested - deleting existing index")
@@ -253,8 +368,8 @@ class RAGSystem:
             if not pdf_paragraphs:
                 self.logger.info("All files are already indexed. Skipping indexing.")
                 self.logger.info("Use force_rebuild=True to reindex everything.")
-                # Still generate knowledge summary even if no new indexing
-                self.logger.info("Generating knowledge summary from existing index...")
+                # Generate fresh knowledge summary from existing index
+                self.logger.info("Generating fresh knowledge summary from existing index...")
                 try:
                     # Check if LLM API key is configured
                     if not self.config.llm_api_key:
@@ -269,6 +384,7 @@ class RAGSystem:
                             video_ids=[],
                             sample_chunks=sample_chunks
                         )
+                        self.logger.info("✓ Fresh knowledge summary generated successfully")
                 except Exception as e:
                     self.logger.warning(f"Failed to generate knowledge summary: {e}")
                 return
@@ -295,7 +411,7 @@ class RAGSystem:
             )
             
             # Generate knowledge summary
-            self.logger.info("Generating knowledge summary...")
+            self.logger.info("Generating fresh knowledge summary...")
             try:
                 # Check if LLM API key is configured
                 if not self.config.llm_api_key:
@@ -313,6 +429,7 @@ class RAGSystem:
                         video_ids=[],  # No videos
                         sample_chunks=sample_chunks
                     )
+                    self.logger.info("✓ Fresh knowledge summary generated successfully")
             except Exception as e:
                 self.logger.warning(f"Failed to generate knowledge summary: {e}")
             

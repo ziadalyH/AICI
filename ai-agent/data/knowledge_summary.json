@@ -1,22 +1,27 @@
 {
-  "overview": "The document outlines the regulations regarding permitted development rights for residential properties, including specific conditions for extensions and alterations to existing structures. It covers limitations on dimensions and alterations related to roofs and other protrusions.",
+  "overview": "The documents cover regulations regarding permitted development rights in England, particularly for householders. They outline specific rules for extensions, height restrictions, and special considerations for protected areas.",
   "topics": [
     "Permitted Development Rights",
-    "Class A Extensions",
-    "Class B Roof Additions",
-    "Protrusion Limits",
-    "Chimney and Flue Regulations"
+    "Householder Extensions",
+    "Height Restrictions",
+    "Measurement Guidelines for Extensions",
+    "Special Character Protection for Article 1(5) Land",
+    "World Heritage Site Regulations",
+    "Roof Design Considerations",
+    "Building Drawings and Illustrations"
   ],
   "suggested_questions": [
-    "What is the maximum distance an extension can extend beyond the rear wall of the original dwellinghouse?",
-    "What conditions must be met for the installation, alteration, or replacement of a chimney, flue, or soil and vent pipe?",
-    "What are the requirements for roof alterations when an extension under Class A is involved?",
-    "What is the maximum allowable protrusion from a roof for a roof light or window and its frame?",
-    "How does Class B define additions to the roof of a dwelling?",
-    "What specific limitations apply to the height of extensions under Class A?",
-    "Are there any restrictions on the materials used for roof alterations under Class B?",
-    "What is the significance of the term 'original dwellinghouse' in the context of permitted development rights?",
-    "What documentation is typically required to assess compliance with permitted development rights?",
-    "How do local planning authorities enforce permitted development rights?"
+    "What is the definition of the 'highest part of the roof of the existing dwellinghouse' according to the regulations?",
+    "How should the length of a rear extension be measured?",
+    "What additional restrictions apply to Class A development on Article 1(5) land?",
+    "What is the significance of the ridge line in determining building height?",
+    "How does the design of a hipped roof affect the extension rules?",
+    "What are the implications of building in a World Heritage Site?",
+    "Can you provide the specific height limits for extensions in residential areas?",
+    "What details are illustrated in Figure 20 regarding extension measurements?",
+    "How do the regulations differentiate between original and extended parts of a house?",
+    "What specific elements must be considered in the design analysis of a building drawing?",
+    "What are the visual indicators that might suggest non-compliance in a building drawing?",
+    "How can I determine if my proposed extension meets the permitted development criteria?"
   ]
 }

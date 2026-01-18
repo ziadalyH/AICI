@@ -21,9 +21,9 @@ class PromptTemplates:
     # SYSTEM PROMPTS
     # ============================================================================
     
-    SYSTEM_GENERAL = """You are a helpful assistant that answers questions about building regulations. Be concise and accurate. When referencing drawing data, always mention the drawing version date."""
+    SYSTEM_GENERAL = """You are a helpful assistant that answers questions about building regulations. Be concise and accurate. CRITICAL: When the user has provided a building drawing, you MUST always mention the drawing timestamp in your answer - this is mandatory for transparency."""
     
-    SYSTEM_DRAWING_ANALYSIS = """You are a helpful assistant that analyzes building drawings and answers questions about them. Be precise and factual. Always mention the drawing version date in your response."""
+    SYSTEM_DRAWING_ANALYSIS = """You are a helpful assistant that analyzes building drawings and answers questions about them. Be precise and factual. CRITICAL: You MUST always mention the drawing version date at the start of your response - this is mandatory."""
     
     # ============================================================================
     # PDF + DRAWING RESPONSE (Multiple Contexts)
@@ -60,6 +60,8 @@ Instructions:
 - Provide a clear, concise answer based on the regulations context{building_spec_note}
 {building_spec_instruction1}{building_spec_instruction2}{building_spec_instruction3}- Be specific and cite relevant details from the regulations
 
+CRITICAL REMINDER: {timestamp_reminder}
+
 Answer:"""
 
     # ============================================================================
@@ -80,8 +82,14 @@ Instructions:
 - Answer based ONLY on the drawing data provided
 - CRITICAL: You MUST start your answer with: "Based on the updated drawing from {formatted_timestamp}, ..."
 - Be specific and cite exact values from the drawing
+- Provide a comprehensive description including:
+  * All layers present (Walls, Plot Boundary, Extension, etc.)
+  * Dimensions and measurements
+  * Spatial relationships between elements
+  * Any notable features or characteristics
 - If the drawing data doesn't contain the information needed, say so clearly
 - Do NOT make assumptions or reference external regulations
+- Be descriptive and detailed in your analysis
 
 Answer:"""
 
@@ -153,11 +161,18 @@ Answer:"""
         """Get instruction about mentioning drawing timestamp."""
         if has_drawing and formatted_timestamp:
             return (
-                f"- IMPORTANT: ONLY if your answer uses information from the building drawing, "
-                f"start with: 'Based on the updated drawing from {formatted_timestamp}, ...'\n"
-                f"- If your answer is based solely on the PDF documents, do NOT mention the drawing timestamp\n"
+                f"- CRITICAL REQUIREMENT: Since the user has provided a building drawing, you MUST include the drawing timestamp in your answer\n"
+                f"- You MUST start your answer with: 'Based on the available regulations and your drawing from {formatted_timestamp}, ...'\n"
+                f"- This is MANDATORY - not optional - whenever drawing data is present\n"
             )
         return ""
+    
+    @staticmethod
+    def get_timestamp_reminder(has_drawing: bool, formatted_timestamp: str) -> str:
+        """Get timestamp reminder for the end of the prompt."""
+        if has_drawing and formatted_timestamp:
+            return f"If drawing data is present, you MUST start with: 'Based on the available regulations and your drawing from {formatted_timestamp}, ...'"
+        return "Provide your answer based on the available information."
     
 
     
@@ -274,10 +289,50 @@ Source: {result.pdf_filename}, Page {result.page_number}
             'plot', 'area', 'dimension', 'size', 'building', 
             'wall', 'door', 'window', 'floor', 'height', 
             'width', 'length', 'room', 'space', 'layout',
-            'my building', 'my plot', 'my property'
+            'my building', 'my plot', 'my property', 'my extension',
+            'my design', 'my drawing'
         ]
         query_lower = query.lower()
         return any(keyword in query_lower for keyword in drawing_keywords)
+    
+    @staticmethod
+    def detect_drawing_only_question(query: str) -> bool:
+        """
+        Detect if a question is ONLY about the drawing (no regulations needed).
+        
+        These questions should skip PDF retrieval entirely and go straight to
+        drawing analysis.
+        
+        Args:
+            query: User's question
+            
+        Returns:
+            True if question is only about drawing description/analysis
+        """
+        drawing_only_keywords = [
+            'describe my drawing',
+            'describe my building',
+            'describe my design',
+            'describe my plot',
+            'describe my extension',
+            'what does my drawing',
+            'what is in my drawing',
+            'what is my drawing',
+            'show me my drawing',
+            'tell me about my drawing',
+            'tell me about my building',
+            'tell me about my design',
+            'analyze my drawing',
+            'what are the dimensions',
+            'what is the size',
+            'what is the area',
+            'how big is my',
+            'how large is my',
+            'what layers',
+            'what elements'
+        ]
+        query_lower = query.lower()
+        return any(keyword in query_lower for keyword in drawing_only_keywords)
     
     @staticmethod
     def detect_adjustment_request(query: str) -> bool:
@@ -408,6 +463,7 @@ class PromptBuilder:
         building_spec_instruction1 = self.templates.get_building_spec_instruction1(has_drawing)
         building_spec_instruction2 = self.templates.get_building_spec_instruction2(has_drawing)
         building_spec_instruction3 = self.templates.get_building_spec_instruction3(has_drawing, formatted_timestamp or "")
+        timestamp_reminder = self.templates.get_timestamp_reminder(has_drawing, formatted_timestamp or "")
         
         # Build prompt
         prompt = self.templates.PDF_SINGLE_CONTEXT.format(
@@ -417,10 +473,16 @@ class PromptBuilder:
             building_spec_note=building_spec_note,
             building_spec_instruction1=building_spec_instruction1,
             building_spec_instruction2=building_spec_instruction2,
-            building_spec_instruction3=building_spec_instruction3
+            building_spec_instruction3=building_spec_instruction3,
+            timestamp_reminder=timestamp_reminder
         )
         
-        return prompt, self.templates.SYSTEM_GENERAL
+        # Modify system prompt if drawing is present
+        system_prompt = self.templates.SYSTEM_GENERAL
+        if has_drawing and formatted_timestamp:
+            system_prompt = f"{system_prompt} YOU MUST START YOUR ANSWER WITH: 'Based on the available regulations and your drawing from {formatted_timestamp}, ...'"
+        
+        return prompt, system_prompt
     
     def build_json_only_drawing(
         self,

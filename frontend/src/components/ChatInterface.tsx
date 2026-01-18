@@ -9,10 +9,23 @@ interface Message {
   content: string;
   sources?: any[];
   timestamp: Date;
+  knowledgeSummary?: {
+    overview: string;
+    topics: string[];
+    suggested_questions: string[];
+  };
 }
 
 interface ChatInterfaceProps {
-  onSendMessage: (message: string) => Promise<{ answer: string; sources?: any[] }>;
+  onSendMessage: (message: string) => Promise<{ 
+    answer: string; 
+    sources?: any[];
+    knowledge_summary?: {
+      overview: string;
+      topics: string[];
+      suggested_questions: string[];
+    };
+  }>;
 }
 
 interface KnowledgeSummary {
@@ -53,6 +66,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSendMessage }) => {
     loadSummary();
   }, []);
 
+  // Listen for question population events from MessageBubble
+  useEffect(() => {
+    const handlePopulateQuestion = (event: CustomEvent) => {
+      setInput(event.detail);
+    };
+
+    window.addEventListener('populateQuestion', handlePopulateQuestion as EventListener);
+    
+    return () => {
+      window.removeEventListener('populateQuestion', handlePopulateQuestion as EventListener);
+    };
+  }, []);
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -77,6 +103,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSendMessage }) => {
         role: 'assistant',
         content: response.answer,
         sources: response.sources,
+        knowledgeSummary: response.knowledge_summary || undefined,
         timestamp: new Date(),
       };
 

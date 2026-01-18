@@ -90,6 +90,7 @@ class PDFResponse:
     title: Optional[str] = None  # Section title/heading for this response
     all_sources: Optional[List[Dict[str, Any]]] = None  # All sources considered by LLM
     selected_source_index: int = 0  # Which source was selected (0-indexed)
+    reasoning_steps: Optional[List[Dict[str, Any]]] = None  # Agentic reasoning steps
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
