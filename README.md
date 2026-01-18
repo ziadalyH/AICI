@@ -115,11 +115,10 @@ The system uses a sophisticated multi-tier AI strategy with fallbacks to ensure 
 
 ### Primary AI Strategy: Hybrid RAG
 
-The core AI approach combines three information sources:
+The core AI approach combines two information sources:
 
 1. **PDF Document Retrieval** - Vector search through indexed building regulations using OpenSearch
 2. **Drawing Context Integration** - User's building specifications from uploaded JSON drawings
-3. **Conversation History** - Multi-turn dialogue context for coherent conversations
 
 **How it works:**
 
