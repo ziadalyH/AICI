@@ -8,7 +8,6 @@ FastAPI backend service handling authentication, session management, and coordin
 - **Session Management** - User session tracking with MongoDB storage
 - **Drawing Storage** - Persistent storage of user's building drawings
 - **Query Routing** - Routes queries to AI Agent (standard or agentic mode)
-- **Auto Logout** - Automatic logout on JWT token expiration
 
 ## Quick Start (Docker - Recommended)
 

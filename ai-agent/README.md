@@ -9,7 +9,6 @@ Production-ready RAG system with hybrid retrieval combining PDF documents and bu
 - **Intelligent Fallback** - 4-tier fallback strategy ensuring users always get meaningful responses
 - **OCR Support** - Automatic text extraction from images in PDFs (Tesseract)
 - **Semantic Chunking** - Advanced chunking strategy creating 1024-token chunks with 256-token overlap
-- **Conversation History** - Multi-turn dialogue support with session management
 - **Auto-Indexing** - Automatic PDF indexing on startup
 
 ## Quick Start (Docker - Recommended)
@@ -336,7 +335,7 @@ The AI Agent uses a modular architecture:
 - Title preservation with content
 - Intelligent merging of adjacent blocks
 
-### Intelligent Fallback
+### Fallback
 
 1. **Tier 1**: Full hybrid (PDF + Drawing)
 2. **Tier 2**: Drawing-only analysis

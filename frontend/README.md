@@ -10,7 +10,6 @@ React + TypeScript frontend for the Hybrid RAG Q&A System.
 - **AI Mode Toggle** - Switch between Standard (⚡) and Agentic (🤖) modes
 - **Source Citations** - View all retrieved sources with relevance scores
 - **Auto Logout** - Automatic logout on JWT token expiration
-- **Responsive Design** - Works on desktop and mobile devices
 
 ## Quick Start (Docker - Recommended)
 

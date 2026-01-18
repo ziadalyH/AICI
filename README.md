@@ -109,9 +109,9 @@ The Hybrid RAG Q&A System is a three-tier application designed for building regu
          └──────────────────┘  └──────────────────────────┘
 ```
 
-## AI Strategy & Intelligent Fallback System
+## AI Strategy & Fallback System
 
-The system uses a sophisticated multi-tier AI strategy with intelligent fallbacks to ensure users always get meaningful responses.
+The system uses a sophisticated multi-tier AI strategy with fallbacks to ensure users always get meaningful responses.
 
 ### Primary AI Strategy: Hybrid RAG
 
@@ -128,7 +128,7 @@ The core AI approach combines three information sources:
 - LLM (GPT-4o-mini) analyzes retrieved regulations + user's drawing specifications
 - Generates contextual answer citing specific sources and comparing against user's design
 
-### Intelligent Fallback Strategy
+### Fallback Strategy
 
 The system implements a cascading fallback strategy to handle edge cases gracefully:
 
